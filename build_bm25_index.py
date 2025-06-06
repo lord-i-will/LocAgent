@@ -21,6 +21,24 @@ def list_folders(path):
 
 def run(rank, repo_queue, repo_path, out_path,
         download_repo=False, instance_data=None, similarity_top_k=10):
+    """
+    调用build_code_retriever函数，构建bm25索引。
+
+    Args:
+        rank (int): 进程的唯一标识符，比如：0、1、2等。
+        repo_queue (multiprocessing.Queue): 存储要处理的仓库名称的队列，比如：['avantifellows__quiz-backend-84', 'Chainlit__chainlit-1575']。
+        repo_path (str): 代码仓库的根目录，比如：playground/build_graph
+        out_path (str): 输出文件的保存路径，比如：index_data/Loc-Bench_V1/BM25_index/
+        download_repo (bool, optional): 是否下载代码仓库。
+        instance_data (List[dict], optional): 实例数据字典，Loc-Bench_V1数据集。
+        similarity_top_k (int, optional): BM25检索器的相似度阈值，默认为10。
+
+    Returns:
+        None
+
+    Examples:
+        >>> run('xxx')
+    """
     while True:
         try:
             repo_name = repo_queue.get_nowait()
@@ -39,19 +57,20 @@ def run(rank, repo_queue, repo_path, out_path,
             os.makedirs(repo_base_dir, exist_ok=True)
             # clone and check actual repo
             try:
-                repo_dir = setup_repo(instance_data=instance_data[repo_name], 
-                                      repo_base_dir=repo_base_dir, 
+                repo_dir = setup_repo(instance_data=instance_data[repo_name],
+                                      repo_base_dir=repo_base_dir,
                                       dataset=None)
             except subprocess.CalledProcessError as e:
                 print(f'[{rank}] Error checkout commit {repo_name}: {e}')
                 continue
         else:
+            # playground/build_graph/5
             repo_dir = osp.join(repo_path, repo_name)
 
         print(f'[{rank}] Start process {repo_name}')
         try:
             retriever = build_code_retriever(repo_dir, persist_path=output_file,
-                                         similarity_top_k=similarity_top_k)
+                                             similarity_top_k=similarity_top_k)
             # G = build_graph(repo_dir, global_import=True)
             # with open(output_file, 'wb') as f:
             #     pickle.dump(G, f)
@@ -65,25 +84,38 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", type=str, default="czlll/SWE-bench_Lite")
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument('--num_processes', type=int, default=30)
-    parser.add_argument('--download_repo', action='store_true', 
+    parser.add_argument('--download_repo', action='store_true',
                         help='Whether to download the codebase to `repo_path` before indexing.')
-    parser.add_argument('--repo_path', type=str, default='playground/build_graph', 
+    parser.add_argument('--repo_path', type=str, default='playground/build_graph',
                         help='The directory where you plan to pull or have already pulled the codebase.')
-    parser.add_argument('--index_dir', type=str, default='index_data', 
+    parser.add_argument('--index_dir', type=str, default='index_data',
                         help='The base directory where the generated graph index will be saved.')
-    parser.add_argument('--instance_id_path', type=str, default='', 
+    parser.add_argument('--instance_id_path', type=str, default='',
                         help='Path to a file containing a list of selected instance IDs.')
+    parser.add_argument('--max_samples', type=int, default=0,
+                        help='Only use the first N samples in the dataset.')
     args = parser.parse_args()
 
-    
     dataset_name = args.dataset.split('/')[-1]
     args.index_dir = f'{args.index_dir}/{dataset_name}/BM25_index/'
     os.makedirs(args.index_dir, exist_ok=True)
-        
+
+    # 解析完入参后：
+    # args.dataset：czlll/Loc-Bench_V1
+    # args.split：test
+    # args.num_processes：10
+    # args.download_repo：false
+    # args.repo_path：playground/build_graph
+    # args.index_dir：index_data/Loc-Bench_V1/BM25_index/
+    # args.max_samples：10
+
     # load selected repo instance id and instance_data
     if args.download_repo:
         selected_instance_data = {}
         bench_data = load_dataset(args.dataset, split=args.split)
+        if args.max_samples > 0:
+            bench_data = bench_data.select(range(args.max_samples))
+
         if args.instance_id_path and osp.exists(args.instance_id_path):
             with open(args.instance_id_path, 'r') as f:
                 repo_folders = json.loads(f.read())

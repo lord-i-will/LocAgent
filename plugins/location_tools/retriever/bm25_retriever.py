@@ -82,6 +82,25 @@ def build_code_retriever_from_repo(repo_path,
         required_exts=['.py'],  # TODO: Shouldn't be hardcoded and filtered
         recursive=True,
     )
+    # [
+    # Document(id_='/Users/bytedance/bytedance/testing_efficiency/code/LocAgent/playground/build_graph/5/avantifellows_quiz-backend/app/__init__.py',
+    # embedding=None,
+    # metadata={
+    #   'file_path': 'Users/bytedance/bytedance/testing_efficiency/code/LocAgent//avantifellows_quiz-backend/app/__init__.py',
+    #   'file_name': '__init__.py',
+    #   'file_type': 'text/x-python',
+    #   'category': 'implementation'},
+    # excluded_embed_metadata_keys=['file_name', 'file_type', 'file_size', 'creation_date', 'last_modified_date', 'last_accessed_date'],
+    # excluded_llm_metadata_keys=['file_name', 'file_type', 'file_size', 'creation_date', 'last_modified_date', 'last_accessed_date'],
+    # relationships={},
+    # text='',
+    # mimetype='text/plain',
+    # start_char_idx=None,
+    # end_char_idx=None,
+    # text_template='{metadata_str}\n\n{content}',
+    # metadata_template='{key}: {value}',
+    # metadata_seperator='\n'),
+    # Document(...)]
     docs = reader.load_data()
 
     # splitter = CodeSplitter(
