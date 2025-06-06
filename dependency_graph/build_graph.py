@@ -47,8 +47,14 @@ def handle_edge_cases(code):
         'xxx'
     """
     # hard-coded edge cases
-    code = code.replace('\ufeff', '')  # 清除 UTF-8 BOM
-    code = code.replace('constants.False', '_False')  # 为了避免语法错误替换特定模式
+    # \ufeff 是 UTF-8 编码中的字节顺序标记（BOM），有时会出现在文件的开头。
+    # 如果不去除 BOM，可能会导致解析器在处理代码时出现错误。
+    # 此行代码通过替换空字符串的方式，移除所有出现的 BOM。
+    code = code.replace('\ufeff', '')
+    # 在某些代码库中，可能会使用 constants.False 这样的表达方式。
+    # 但 False 是 Python 的保留关键字，不能作为属性名使用。
+    # 为了避免语法错误，将 constants.False 替换为 _False，确保代码可以被正确解析。
+    code = code.replace('constants.False', '_False')
     code = code.replace('constants.True', '_True')
     code = code.replace("False", "_False")
     code = code.replace("True", "_True")
@@ -64,6 +70,21 @@ def handle_edge_cases(code):
 
 
 def find_imports(filepath, repo_path, tree=None):
+    """
+    解析给定的 Python 源代码字符串，提取其中的导入模块。
+
+    Args:
+        filepath: Python 文件路径。
+        repo_path: 代码仓库的根目录。
+        tree: 可选参数，表示已解析的抽象语法树（AST）。如果为 None，函数将从 filepath 中读取代码并解析为 AST。
+
+    Returns:
+        List[dict]: imports列表，每个元素形如{"type": "import", "module": "networkx", "alias": nx}
+
+    Examples:
+        >>> find_imports('xxx')
+        'xxx'
+    """
     if tree is None:
         try:
             with open(filepath, 'r') as file:
@@ -71,9 +92,11 @@ def find_imports(filepath, repo_path, tree=None):
         except:
             raise SyntaxError
         # include all imports for file
+        # 广度优先方式遍历整棵语法树
         candidates = ast.walk(tree)
     else:
         # only include top level import for classes/functions
+        # 返回根节点的直接子节点，不包含所有孙子（局部遍历）
         candidates = ast.iter_child_nodes(tree)
 
     imports = []
@@ -298,6 +321,22 @@ def resolve_symlink(file_path):
 # Traverse all the Python files under repo_path, construct dependency graphs 
 # with node types: directory, file, class, function
 def build_graph(repo_path, fuzzy_search=True, global_import=False):
+    """
+    遍历代码仓库下所有Python文件，构建依赖图，节点类型如下：directory, file, class, function
+
+    Args:
+        repo_path(str):	要分析的代码仓库根目录路径，例如/home/user/project
+        fuzzy_search(bool):	是否启用“模糊调用查找”，调用时不精确匹配，仅根据名称匹配。
+            fuzzy_search=True：在分析调用关系时，即使函数名/类名重复，也会保留所有可能的候选目标（更全面但可能引入歧义）
+        global_import(bool): 是否启用“跨文件全局搜索导入”，用于增强依赖分析。
+            global_import=True：当某个类/函数调用未能在当前文件的导入关系中解析到，会在整个图中尝试匹配符号名，类似“全局搜索”。
+
+    Returns:
+        networkx.MultiDiGraph: 有向异构多重图
+
+    Examples:
+        >>> build_graph('xxx', global_import=True)
+    """
     graph = nx.MultiDiGraph()
     file_nodes = {}
 
