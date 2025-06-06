@@ -23,6 +23,8 @@ VALID_NODE_TYPES = [NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, NODE_TYPE_CLASS, NODE_T
 VALID_EDGE_TYPES = [EDGE_TYPE_CONTAINS, EDGE_TYPE_INHERITS, EDGE_TYPE_INVOKES, EDGE_TYPE_IMPORTS]
 
 SKIP_DIRS = ['.github', '.git']
+
+
 def is_skip_dir(dirname):
     for skip_dir in SKIP_DIRS:
         if skip_dir in dirname:
@@ -31,9 +33,22 @@ def is_skip_dir(dirname):
 
 
 def handle_edge_cases(code):
+    """
+    对源代码进行预处理，解决一些可能导致语法解析错误的特殊情况。
+
+    Args:
+        code (str): 源代码
+
+    Returns:
+        str: 处理后的源代码
+
+    Examples:
+        >>> handle_edge_cases('xxx')
+        'xxx'
+    """
     # hard-coded edge cases
-    code = code.replace('\ufeff', '')
-    code = code.replace('constants.False', '_False')
+    code = code.replace('\ufeff', '')  # 清除 UTF-8 BOM
+    code = code.replace('constants.False', '_False')  # 为了避免语法错误替换特定模式
     code = code.replace('constants.True', '_True')
     code = code.replace("False", "_False")
     code = code.replace("True", "_True")
@@ -300,7 +315,7 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
             continue
         else:
             graph.add_node(dirname, type=NODE_TYPE_DIRECTORY)
-            parent_dirname  = os.path.dirname(dirname)
+            parent_dirname = os.path.dirname(dirname)
             if parent_dirname == '':
                 parent_dirname = '/'
             graph.add_edge(parent_dirname, dirname, type=EDGE_TYPE_CONTAINS)
@@ -772,4 +787,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main()
-

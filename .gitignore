@@ -183,3 +183,5 @@ sft/
 config.toml
 unsloth_compiled_cache/
 wandb/
+
+results/
