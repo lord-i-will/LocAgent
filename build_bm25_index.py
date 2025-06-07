@@ -1,7 +1,9 @@
 import argparse
+import glob
 import json
 import os
 import pickle
+import re
 import time
 from pathlib import Path
 import subprocess
@@ -64,7 +66,6 @@ def run(rank, repo_queue, repo_path, out_path,
                 print(f'[{rank}] Error checkout commit {repo_name}: {e}')
                 continue
         else:
-            # playground/build_graph/5
             repo_dir = osp.join(repo_path, repo_name)
 
         print(f'[{rank}] Start process {repo_name}')
@@ -132,6 +133,7 @@ if __name__ == '__main__':
             with open(args.instance_id_path, 'r') as f:
                 repo_folders = json.loads(f.read())
         else:
+            # 0,1,2,3,4,5,6,7...进程号
             repo_folders = list_folders(args.repo_path)
         selected_instance_data = None
 

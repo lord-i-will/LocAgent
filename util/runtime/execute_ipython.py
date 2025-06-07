@@ -11,6 +11,18 @@ from IPython.terminal.interactiveshell import TerminalInteractiveShell
 
 
 def execute_ipython(code_to_execute):
+    """
+    在 IPython shell 中执行动态 Python 代码（code_to_execute 字符串中提到的函数），并将其输出（stdout 和
+    stderr）捕获返回。ipython环境中注入了如下4个函数：search_code_snippets、get_entity_contents
+    、explore_graph_structure、explore_tree_structure
+
+    Args:
+        code_to_execute (str): 包含函数调用的字符串。
+            比如：如果传入search_code_snippets('xxx')，那么会调用search_code_snippets函数。
+
+    Returns:
+        str: 函数执行的结果，如果函数执行失败，返回None。
+    """
     # Manually initialize an IPython shell
     ipython_shell = TerminalInteractiveShell.instance()
 

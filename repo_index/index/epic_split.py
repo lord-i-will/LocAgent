@@ -105,6 +105,9 @@ class EpicSplitter(NodeParser):
         non_code_file_extensions: list[str] | None = None,
         callback_manager: CallbackManager | None = None,
     ) -> None:
+        """
+        代码切分器，将 Document（原始文档对象）切分成一个个 Node（文本/代码 chunk）。
+        """
         if non_code_file_extensions is None:
             non_code_file_extensions = ["md", "txt"]
         callback_manager = callback_manager or CallbackManager([])
@@ -140,11 +143,23 @@ class EpicSplitter(NodeParser):
         show_progress: bool = False,
         **kwargs: Any,
     ) -> list[BaseNode]:
+        """
+
+        Args:
+            nodes (Sequence[BaseNode]): CodeNode列表，CodeNode是从doc中切分出来的，doc(.py文件)和CodeNode是一对多。
+                如果doc内容很少，一个CodeNode就等价于一个doc；如果doc内容很多，就会被切分成多个CodeNode。
+            show_progress (bool, optional): 是否显示进度条，默认为False。
+
+        Returns:
+            list[BaseNode]:
+        """
+        # 进度条展示
         nodes_with_progress = get_tqdm_iterable(nodes, show_progress, "Parsing nodes")
 
         all_nodes: list[BaseNode] = []
 
         for node in nodes_with_progress:
+            # e.g. Users/bytedance/bytedance/testing_efficiency/code/LocAgent//app/database.py
             file_path = node.metadata.get("file_path")
             content = node.get_content()
 
