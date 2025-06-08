@@ -12,7 +12,7 @@ from dependency_graph import RepoEntitySearcher, RepoDependencySearcher
 from dependency_graph.build_graph import (
     build_graph,
     NODE_TYPE_DIRECTORY, NODE_TYPE_FILE, NODE_TYPE_CLASS, NODE_TYPE_FUNCTION,
-    EDGE_TYPE_CONTAINS, # EDGE_TYPE_INHERITS, EDGE_TYPE_INVOKES, EDGE_TYPE_IMPORTS, 
+    EDGE_TYPE_CONTAINS,  # EDGE_TYPE_INHERITS, EDGE_TYPE_INVOKES, EDGE_TYPE_IMPORTS,
     VALID_NODE_TYPES, VALID_EDGE_TYPES
 )
 from dependency_graph.traverse_graph import (
@@ -38,6 +38,7 @@ from plugins.location_tools.utils.util import (
 from util.benchmark.setup_repo import setup_repo
 import subprocess
 import logging
+
 logger = logging.getLogger(__name__)
 
 CURRENT_ISSUE_ID: str | None = None
@@ -52,11 +53,28 @@ DP_GRAPH: nx.MultiDiGraph | None = None
 
 REPO_SAVE_DIR: str | None = None
 
-def set_current_issue(instance_id: str = None, 
+
+def set_current_issue(instance_id: str = None,
                       instance_data: dict = None,
                       dataset: str = "princeton-nlp/SWE-bench_Lite", split: str = "test", rank=0):
+    """
+    初始化一个issue的分析上下文，包括数据集实例样本、数据集实例涉及的源码repo下载、构建代码图并从图中提取所有的文件/类/函数实体节点。
+
+    Args:
+        instance_id (str): 数据集实例样本唯一标识，格式为 repo-issueID 组合，比如：avantifellows/quiz-backend仓库，编号为84的issue，该样本的唯一标识是avantifellows__quiz-backend-84
+        instance_data (dict): 数据集实例样本，比如：Loc-Bench_V1数据集中的每行记录。
+        dataset (str): 数据集名称，比如：czlll/Loc-Bench_V1
+        split (str, optional): 使用数据集的哪个子集，常见的值有：
+            "train"：训练集
+            "validation"：验证集
+            "test[:10]"：测试集的前 10 条记录
+            "train[:10%]"：训练集的前 10%
+            也可以是其他分片语法（Hugging Face 支持切片加载）
+        rank (int, optional): 并行处理中的进程唯一标识，主要用于日志或调试，比如：0、1、2等。
+    """
     global CURRENT_ISSUE_ID, CURRENT_INSTANCE
     global ALL_FILE, ALL_CLASS, ALL_FUNC
+    # 二者必须传入其一
     assert instance_id or instance_data
 
     if instance_id:
@@ -73,7 +91,7 @@ def set_current_issue(instance_id: str = None,
     assert not os.path.exists(REPO_SAVE_DIR), f"{REPO_SAVE_DIR} already exists"
     # create playground
     os.makedirs(REPO_SAVE_DIR)
-    
+
     # setup graph traverser
     global DP_GRAPH_ENTITY_SEARCHER, DP_GRAPH_DEPENDENCY_SEARCHER, DP_GRAPH
     graph_index_file = f"{GRAPH_INDEX_DIR}/{CURRENT_ISSUE_ID}.pkl"
@@ -91,15 +109,15 @@ def set_current_issue(instance_id: str = None,
             logging.error(f'[{rank}] Error processing {CURRENT_ISSUE_ID}: {e}')
     else:
         G = pickle.load(open(graph_index_file, "rb"))
-        
+
     DP_GRAPH_ENTITY_SEARCHER = RepoEntitySearcher(G)
     DP_GRAPH_DEPENDENCY_SEARCHER = RepoDependencySearcher(G)
     DP_GRAPH = G
-    
+
     ALL_FILE = DP_GRAPH_ENTITY_SEARCHER.get_all_nodes_by_type(NODE_TYPE_FILE)
     ALL_CLASS = DP_GRAPH_ENTITY_SEARCHER.get_all_nodes_by_type(NODE_TYPE_CLASS)
     ALL_FUNC = DP_GRAPH_ENTITY_SEARCHER.get_all_nodes_by_type(NODE_TYPE_FUNCTION)
-    
+
     logging.debug(f'Rank = {rank}, set CURRENT_ISSUE_ID = {CURRENT_ISSUE_ID}')
 
 
@@ -148,6 +166,7 @@ def get_graph():
     assert DP_GRAPH is not None
     return DP_GRAPH
 
+
 def get_repo_save_dir():
     global REPO_SAVE_DIR
     return REPO_SAVE_DIR
@@ -157,7 +176,7 @@ def get_module_name_by_line_num(file_path: str, line_num: int):
     # TODO: 
     # if the given line isn't in a function of a class and the class is large, 
     # find the nearest two member functions and return
-    
+
     entity_searcher = get_graph_entity_searcher()
     dp_searcher = get_graph_dependency_searcher()
 
@@ -177,7 +196,7 @@ def get_module_name_by_line_num(file_path: str, line_num: int):
                     cur_module = func  # ['node_id']
                     break
 
-    if cur_module: # and cur_module['type'] in [NODE_TYPE_CLASS, NODE_TYPE_FUNCTION]
+    if cur_module:  # and cur_module['type'] in [NODE_TYPE_CLASS, NODE_TYPE_FUNCTION]
         return cur_module
         # module_ndata = entity_searcher.get_node_data([cur_module['node_id']], return_code_content=True)
         # return module_ndata[0]
@@ -187,11 +206,11 @@ def get_module_name_by_line_num(file_path: str, line_num: int):
 def get_code_block_by_line_nums(query_info, context_window=20):
     # file_path: str, line_nums: List[int]
     searcher = get_graph_entity_searcher()
-    
+
     file_path = query_info.file_path_or_pattern
     line_nums = query_info.line_nums
     cur_query_results = []
-    
+
     file_data = searcher.get_node_data([file_path], return_code_content=False)[0]
     line_intervals = []
     res_modules = []
@@ -199,15 +218,15 @@ def get_code_block_by_line_nums(query_info, context_window=20):
     for line in line_nums:
         # 首先检查是哪个module的代码
         module_data = get_module_name_by_line_num(file_path, line)
-        
+
         # 如果不是某个module, 则搜索上下20行
         if not module_data:
             min_line_num = max(1, line - context_window)
             max_line_num = min(file_data['end_line'], line + context_window)
             line_intervals.append((min_line_num, max_line_num))
-            
+
         elif module_data['node_id'] not in res_modules:
-            query_result = QueryResult(query_info=query_info, format_mode='preview', 
+            query_result = QueryResult(query_info=query_info, format_mode='preview',
                                        nid=module_data['node_id'],
                                        ntype=module_data['type'],
                                        start_line=module_data['start_line'],
@@ -216,19 +235,19 @@ def get_code_block_by_line_nums(query_info, context_window=20):
                                        )
             cur_query_results.append(query_result)
             res_modules.append(module_data['node_id'])
-            
+
     if line_intervals:
         line_intervals = merge_intervals(line_intervals)
         for interval in line_intervals:
             start_line, end_line = interval
-            query_result = QueryResult(query_info=query_info, 
-                                        format_mode='code_snippet',
-                                        nid=file_path,
-                                        file_path=file_path,
-                                        start_line=start_line,
-                                        end_line=end_line,
-                                        retrieve_src=f"Retrieved code context including {query_info.term}."
-                                        )
+            query_result = QueryResult(query_info=query_info,
+                                       format_mode='code_snippet',
+                                       nid=file_path,
+                                       file_path=file_path,
+                                       start_line=start_line,
+                                       end_line=end_line,
+                                       retrieve_src=f"Retrieved code context including {query_info.term}."
+                                       )
             cur_query_results.append(query_result)
         # res_code_blocks = line_wrap_content('\n'.join(file_content), line_intervals)
 
@@ -237,15 +256,36 @@ def get_code_block_by_line_nums(query_info, context_window=20):
 
 
 def parse_node_id(nid: str):
+    """
+    解析节点ID，返回文件名和节点名称。
+
+    Args:
+        nid (str): 节点ID，比如：function节点格式为"app/schemas.py:PyObjectId.validate"。
+    Returns:
+        tuple: 包含文件名和节点名称的元组，比如：("app/schemas.py", "PyObjectId.validate")。
+    """
     nfile = nid.split(':')[0]
     nname = nid.split(':')[-1]
     return nfile, nname
 
 
 def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] = None, prefix_term=None):
+    """
+    在全局字典中搜索实体，实体包含directory、file、class、function类型节点。
+
+    Args:
+        term (str): 自然语言描述的关键词，如 "class MyClass"、"def foo"、"function bar.test"。
+        include_files (List[str]): 可选，文件过滤器，只从指定文件中查找。
+        prefix_term (str): 可选，限定搜索范围的实体前缀，用于辅助消除歧义，如 "class_name.method_name"。
+
+    Returns:
+        dict: 键为实体类型（directory、file、class、function），值为对应的实体ID列表。
+            比如：{'function': ['a/b.py:foo', 'c/d.py:foo'], 'class': ['e/f.py:Foo']}
+    """
     searcher = get_graph_entity_searcher()
-    
+
     # TODO: hard code cases like "class Migration" and "function testing"
+    # 移除一些自然语言描述（或语法糖）
     if term.startswith(('class ', 'Class')):
         term = term[len('class '):].strip()
     elif term.startswith(('function ', 'Function ')):
@@ -254,7 +294,7 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
         term = term[len('method '):].strip()
     elif term.startswith('def '):
         term = term[len('def '):].strip()
-    
+
     # TODO: lower case if not find
     # TODO: filename xxx.py as key (also lowercase if not find)
     # global_name_dict = None
@@ -267,7 +307,7 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
         nids = global_name_dict[term]
     else:
         return None
-    
+
     node_datas = searcher.get_node_data(nids, return_code_content=False)
     found_entities_filter_dict = collections.defaultdict(list)
     for ndata in node_datas:
@@ -275,6 +315,9 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
         if not include_files or nfile in include_files:
             prefix_terms = []
             # candidite_prefixes = ndata['node_id'].lower().replace('.py', '').replace('/', '.').split('.')
+            # e.g. ndata['node_id'] -> app/schemas.py:PyObjectId.validate
+            # lower + strip .py → "app/schemas:pyobjectid.validate"
+            # re.split → ['app', 'schemas', 'pyobjectid', 'validate']
             candidite_prefixes = re.split(r'[./:]', ndata['node_id'].lower().replace('.py', ''))[:-1]
             if prefix_term:
                 prefix_terms = prefix_term.lower().split('.')
@@ -285,13 +328,20 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
 
 
 def search_entity(query_info, include_files: List[str] = None):
+    """
+    从代码库中搜索实体，实体包含directory、file、class、function类型节点。
+
+    Args:
+        query_info (QueryInfo): 查询信息，通常包含用户输入的查询术语（关键词）。
+        include_files (List[str]): 表示需要限定搜索范围的文件路径集合。
+    """
     term = query_info.term
     searcher = get_graph_entity_searcher()
     # cur_result = ''
     continue_search = True
 
     cur_query_results = []
-    
+
     # first: exact match in graph
     if searcher.has_node(term):
         continue_search = False
@@ -299,34 +349,34 @@ def search_entity(query_info, include_files: List[str] = None):
                                    retrieve_src=f"Exact match found for entity name `{term}`."
                                    )
         cur_query_results.append(query_result)
-    
+
     # TODO: __init__ not exsit
     elif term.endswith('.__init__'):
         nid = term[:-(len('.__init__'))]
         if searcher.has_node(nid):
             continue_search = False
             node_data = searcher.get_node_data([nid], return_code_content=True)[0]
-            query_result = QueryResult(query_info=query_info, format_mode='preview', 
-                                    nid=nid, 
-                                    ntype=node_data['type'],
-                                    start_line=node_data['start_line'],
-                                    end_line=node_data['end_line'],
-                                    retrieve_src=f"Exact match found for entity name `{nid}`."
-                                    )
+            query_result = QueryResult(query_info=query_info, format_mode='preview',
+                                       nid=nid,
+                                       ntype=node_data['type'],
+                                       start_line=node_data['start_line'],
+                                       end_line=node_data['end_line'],
+                                       retrieve_src=f"Exact match found for entity name `{nid}`."
+                                       )
             cur_query_results.append(query_result)
-    
+
     # second: search in global name dict
-    if continue_search: 
+    if continue_search:
         found_entities_dict = search_entity_in_global_dict(term, include_files)
         if not found_entities_dict:
             found_entities_dict = search_entity_in_global_dict(term)
-        
+
         use_sub_term = False
         used_term = term
         if not found_entities_dict and '.' in term:
             # for cases: class_name.method_name
             try:
-                prefix_term = '.'.join(term.split('.')[:-1]).split()[-1] # incase of 'class '/ 'function '
+                prefix_term = '.'.join(term.split('.')[:-1]).split()[-1]  # incase of 'class '/ 'function '
             except IndexError:
                 prefix_term = None
             split_term = term.split('.')[-1].strip()
@@ -337,9 +387,9 @@ def search_entity(query_info, include_files: List[str] = None):
             if not found_entities_dict:
                 use_sub_term = True
                 found_entities_dict = search_entity_in_global_dict(split_term)
-        
+
         # TODO: split the term and find in global dict
-            
+
         if found_entities_dict:
             for ntype, nids in found_entities_dict.items():
                 if not nids: continue
@@ -347,11 +397,12 @@ def search_entity(query_info, include_files: List[str] = None):
 
                 # procee class and function in the same way
                 if ntype in [NODE_TYPE_FUNCTION, NODE_TYPE_CLASS, NODE_TYPE_FILE]:
+                    # 如果候选节点数量较少，获取所有候选节点的详细信息，并包含代码内容（用于 preview）
                     if len(nids) <= 3:
                         node_datas = searcher.get_node_data(nids, return_code_content=True)
                         for ndata in node_datas:
-                            query_result = QueryResult(query_info=query_info, format_mode='preview', 
-                                                       nid=ndata['node_id'], 
+                            query_result = QueryResult(query_info=query_info, format_mode='preview',
+                                                       nid=ndata['node_id'],
                                                        ntype=ndata['type'],
                                                        start_line=ndata['start_line'],
                                                        end_line=ndata['end_line'],
@@ -359,22 +410,25 @@ def search_entity(query_info, include_files: List[str] = None):
                                                        )
                             cur_query_results.append(query_result)
                         # continue_search = False
+                    # 否则不加载代码内容，使用 fold 模式（简略模式）展示，减少信息冗余。
                     else:
                         node_datas = searcher.get_node_data(nids, return_code_content=False)
                         for ndata in node_datas:
-                            query_result = QueryResult(query_info=query_info, format_mode='fold', 
+                            query_result = QueryResult(query_info=query_info, format_mode='fold',
                                                        nid=ndata['node_id'],
                                                        ntype=ndata['type'],
                                                        retrieve_src=f"Match found for entity name `{used_term}`."
                                                        )
                             cur_query_results.append(query_result)
                     if not use_sub_term:
+                        # 如果是原词命中的，就停止后续搜索
                         continue_search = False
                     else:
+                        # 如果用了“子词”，继续后续阶段（比如代码片段匹配或embedding匹配）。
                         continue_search = True
-                                   
-        
+
     # third: bm25 search (entity + content)
+    # 最宽松的召回策略：使用 BM25 和模糊搜索做内容级检索。这是在前两阶段都未命中时的兜底方案，具备一定的“智能召回”能力。
     if continue_search:
         module_nids = []
 
@@ -386,31 +440,35 @@ def search_entity(query_info, include_files: List[str] = None):
         # search entity by keyword
         module_nids = bm25_module_retrieve(query=term, include_files=include_files)
         if not module_nids:
+            # 如果没有结果，再进行一次全局范围检索（不加文件限制）
             module_nids = bm25_module_retrieve(query=term)
-            
+
         if not module_nids:
             # result += f"No entity found using BM25 search. Try to use fuzzy search...\n"
+            # 如果还找不到，使用模糊检索
             module_nids = fuzzy_retrieve(term, graph=get_graph(), similarity_top_k=3)
 
         module_datas = searcher.get_node_data(module_nids, return_code_content=True)
         showed_module_num = 0
         for module in module_datas[:5]:
+            # 对于文件或目录节点，使用 fold 模式（折叠显示，避免信息噪声）
             if module['type'] in [NODE_TYPE_FILE, NODE_TYPE_DIRECTORY]:
-                query_result = QueryResult(query_info=query_info, format_mode='fold', 
-                                        nid=module['node_id'],
-                                        ntype=module['type'],
-                                        retrieve_src=f"Retrieved entity using keyword search (bm25)."
-                                        )
+                query_result = QueryResult(query_info=query_info, format_mode='fold',
+                                           nid=module['node_id'],
+                                           ntype=module['type'],
+                                           retrieve_src=f"Retrieved entity using keyword search (bm25)."
+                                           )
                 cur_query_results.append(query_result)
+            # 对于类、函数等节点类型，最多展示 3 个，使用 preview 模式（带起止行号）
             elif showed_module_num < 3:
                 showed_module_num += 1
-                query_result = QueryResult(query_info=query_info, format_mode='preview', 
-                                        nid=module['node_id'],
-                                        ntype=module['type'],
-                                        start_line=module['start_line'],
-                                            end_line=module['end_line'],
-                                            retrieve_src=f"Retrieved entity using keyword search (bm25)."
-                                        )
+                query_result = QueryResult(query_info=query_info, format_mode='preview',
+                                           nid=module['node_id'],
+                                           ntype=module['type'],
+                                           start_line=module['start_line'],
+                                           end_line=module['end_line'],
+                                           retrieve_src=f"Retrieved entity using keyword search (bm25)."
+                                           )
                 cur_query_results.append(query_result)
 
     return (cur_query_results, continue_search)
@@ -424,7 +482,7 @@ def merge_query_results(query_results):
     for qr in query_results:
         if qr.format_mode == 'code_snippet':
             all_query_results.append(qr)
-        
+
         elif qr.nid and qr.nid in merged_results:
             # Merge query_info_list
             if qr.query_info_list[0] not in merged_results[qr.nid].query_info_list:
@@ -437,10 +495,10 @@ def merge_query_results(query_results):
                 merged_results[qr.nid].start_line = qr.start_line
                 merged_results[qr.nid].end_line = qr.end_line
                 merged_results[qr.nid].retrieve_src = qr.retrieve_src
-                
+
         elif qr.nid:
             merged_results[qr.nid] = qr
-    
+
     all_query_results += list(merged_results.values())
     return all_query_results
 
@@ -456,7 +514,7 @@ def rank_and_aggr_query_results(query_results, fixed_query_info_list):
             query_info_list_dict[key].append(qr)
         else:
             query_info_list_dict[key] = [qr]
-            
+
     # for the key: sort by query
     def sorting_key(key):
         # Find the first matching element index from fixed_query_info_list in the key (tuple of query_info_list)
@@ -468,11 +526,11 @@ def rank_and_aggr_query_results(query_results, fixed_query_info_list):
 
     sorted_keys = sorted(query_info_list_dict.keys(), key=sorting_key)
     sorted_query_info_list_dict = {key: query_info_list_dict[key] for key in sorted_keys}
-    
+
     # for the value: sort by format priority
-    priority = {'complete': 1, 'code_snippet': 2, 'preview': 3,  'fold': 4}  # Lower value indicates higher priority
+    priority = {'complete': 1, 'code_snippet': 2, 'preview': 3, 'fold': 4}  # Lower value indicates higher priority
     # TODO: merge the same node in 'code_snippet' and 'preview'
-    
+
     organized_dict = {}
     for key, values in sorted_query_info_list_dict.items():
         nested_dict = {priority_key: [] for priority_key in priority.keys()}
@@ -483,9 +541,9 @@ def rank_and_aggr_query_results(query_results, fixed_query_info_list):
 
         # Only add keys with non-empty lists to keep the result clean
         organized_dict[key] = {k: v for k, v in nested_dict.items() if v}
-    
+
     return organized_dict
-        
+
 
 def search_code_snippets(
         search_terms: Optional[List[str]] = None,
@@ -538,7 +596,7 @@ def search_code_snippets(
         # Combined search for a module name and within a specific file pattern
         result = search_code_snippets(search_terms=["MyClass"], file_path_or_pattern="src/**/*.py")
     """
-    
+
     files, _, _ = get_current_repo_modules()
     all_file_paths = [file['name'] for file in files]
 
@@ -554,7 +612,7 @@ def search_code_snippets(
 
     query_info_list = []
     all_query_results = []
-    
+
     if search_terms:
         # search all terms together
         filter_terms = []
@@ -563,37 +621,37 @@ def search_code_snippets(
                 result += f'No results for test files: `{term}`. Please do not search for any test files.\n\n'
             else:
                 filter_terms.append(term)
-        
+
         joint_terms = deepcopy(filter_terms)
         if len(filter_terms) > 1:
             filter_terms.append(' '.join(filter_terms))
-        
+
         for i, term in enumerate(filter_terms):
             term = term.strip().strip('.')
             if not term: continue
-                
+
             query_info = QueryInfo(term=term)
             query_info_list.append(query_info)
-            
+
             cur_query_results = []
-            
+
             # search entity
             query_results, continue_search = search_entity(query_info=query_info, include_files=include_files)
             cur_query_results.extend(query_results)
-            
+
             # search content
             if continue_search:
                 query_results = bm25_content_retrieve(query_info=query_info, include_files=include_files)
                 cur_query_results.extend(query_results)
-                
-            elif i != (len(filter_terms)-1):
+
+            elif i != (len(filter_terms) - 1):
                 joint_terms[i] = ''
                 filter_terms[-1] = ' '.join([t for t in joint_terms if t.strip()])
                 if filter_terms[-1] in filter_terms[:-1]:
                     filter_terms[-1] = ''
-                
+
             all_query_results.extend(cur_query_results)
-    
+
     if file_path_or_pattern in all_file_paths and line_nums:
         if isinstance(line_nums, int):
             line_nums = [line_nums]
@@ -601,20 +659,18 @@ def search_code_snippets(
         term = file_path + ':line ' + ', '.join([str(line) for line in line_nums])
         # result += f"Search `line(s) {line_nums}` in file `{file_path}` ...\n"
         query_info = QueryInfo(term=term, line_nums=line_nums, file_path_or_pattern=file_path)
-        
+
         # Search for codes based on file name and line number
         query_results = get_code_block_by_line_nums(query_info)
         all_query_results.extend(query_results)
-    
-    
+
     merged_results = merge_query_results(all_query_results)
     ranked_query_to_results = rank_and_aggr_query_results(merged_results, query_info_list)
-    
-    
+
     # format output
     # format_mode: 'complete', 'preview', 'code_snippet', 'fold': 4
     searcher = get_graph_entity_searcher()
-    
+
     for query_infos, format_to_results in ranked_query_to_results.items():
         term_desc = ', '.join([f'"{query.term}"' for query in query_infos])
         result += f'##Searching for term {term_desc}...\n'
@@ -626,20 +682,20 @@ def search_code_snippets(
                 for qr in query_results:
                     if not cur_retrieve_src:
                         cur_retrieve_src = qr.retrieve_src
-                        
+
                     if cur_retrieve_src != qr.retrieve_src:
                         cur_result += "Source: " + cur_retrieve_src + '\n\n'
                         cur_retrieve_src = qr.retrieve_src
-                        
+
                     cur_result += qr.format_output(searcher)
-                    
+
                 cur_result += "Source: " + cur_retrieve_src + '\n'
                 if len(query_results) > 1:
                     cur_result += 'Hint: Use more detailed query to get the full content of some if needed.\n'
                 else:
                     cur_result += f'Hint: Search `{query_results[0].nid}` for the full content if needed.\n'
                 cur_result += '\n'
-                
+
             elif format_mode == 'complete':
                 for qr in query_results:
                     cur_result += qr.format_output(searcher)
@@ -654,7 +710,7 @@ def search_code_snippets(
                         grouped_by_file[qr.file_path].append(qr)
                     else:
                         filtered_results.append(qr)
-                
+
                 for file_path, results in grouped_by_file.items():
                     # Sort by start_line and then by end_line in descending order
                     sorted_results = sorted(results, key=lambda qr: (qr.start_line, -qr.end_line))
@@ -665,43 +721,43 @@ def search_code_snippets(
                         if qr.end_line > max_end_line:
                             filtered_results.append(qr)
                             max_end_line = max(max_end_line, qr.end_line)
-                
+
                 # filtered_results = query_results
                 for qr in filtered_results:
                     cur_result += qr.format_output(searcher)
                     cur_result += '\n'
-            
+
             elif format_mode == 'code_snippet':
                 for qr in query_results:
                     cur_result += qr.format_output(searcher)
                     cur_result += '\n'
-            
+
         cur_result += '\n\n'
-        
+
         if cur_result.strip():
             result += cur_result
         else:
             result += 'No locations found.\n\n'
-        
+
     return result.strip()
 
 
 def get_entity_contents(entity_names: List[str]):
     searcher = get_graph_entity_searcher()
-    
+
     result = ''
     for name in entity_names:
         name = name.strip().strip('.')
         if not name: continue
-        
+
         result += f'##Searching for entity `{name}`...\n'
         result += f'### Search Result:\n'
         query_info = QueryInfo(term=name)
-        
+
         if searcher.has_node(name):
             query_result = QueryResult(query_info=query_info, format_mode='complete', nid=name,
-                                    retrieve_src=f"Exact match found for entity name `{name}`."
-                                    )
+                                       retrieve_src=f"Exact match found for entity name `{name}`."
+                                       )
             result += query_result.format_output(searcher)
             result += '\n\n'
         else:
@@ -764,7 +820,7 @@ def bm25_content_retrieve(
 
     instance = get_current_issue_data()
     query = query_info.term
-    
+
     persist_path = os.path.join(BM25_INDEX_DIR, instance["instance_id"])
     if os.path.exists(f'{persist_path}/corpus.jsonl'):
         # TODO: if similairy_top_k > cache's setting, then regenerate
@@ -788,7 +844,7 @@ def bm25_content_retrieve(
             #     continue
             if all([span_id in ['docstring', 'imports', 'comments'] for span_id in node.metadata['span_ids']]):
                 # TODO: drop ?
-                query_result = QueryResult(query_info=query_info, 
+                query_result = QueryResult(query_info=query_info,
                                            format_mode='code_snippet',
                                            nid=node.metadata['file_path'],
                                            file_path=node.metadata['file_path'],
@@ -797,7 +853,7 @@ def bm25_content_retrieve(
                                            retrieve_src=f"Retrieved code content using keyword search (bm25)."
                                            )
                 cur_query_results.append(query_result)
-                
+
             elif any([span_id in ['docstring', 'imports', 'comments'] for span_id in node.metadata['span_ids']]):
                 nids = []
                 for span_id in node.metadata['span_ids']:
@@ -806,11 +862,11 @@ def bm25_content_retrieve(
                     if searcher.has_node(nid):
                         nids.append(nid)
                     # TODO: warning if not find
-                    
+
                 node_datas = searcher.get_node_data(nids, return_code_content=True)
                 sorted_ndatas = sorted(node_datas, key=lambda x: x['start_line'])
                 sorted_nids = [ndata['node_id'] for ndata in sorted_ndatas]
-                
+
                 message = ''
                 if sorted_nids:
                     if sorted_ndatas[0]['start_line'] < node.metadata['start_line']:
@@ -823,11 +879,11 @@ def bm25_content_retrieve(
                         ntype = sorted_ndatas[-1]['type']
                         message += f"The code for {ntype} `{nid}` is incomplete; search `{nid}` for the full content if needed.\n"
                     if message.strip():
-                        message = "Hint: \n"+ message
-                
+                        message = "Hint: \n" + message
+
                 nids_str = ', '.join([f'`{nid}`' for nid in sorted_nids])
                 desc = f"Found {nids_str}."
-                query_result = QueryResult(query_info=query_info, 
+                query_result = QueryResult(query_info=query_info,
                                            format_mode='code_snippet',
                                            nid=node.metadata['file_path'],
                                            file_path=node.metadata['file_path'],
@@ -837,7 +893,7 @@ def bm25_content_retrieve(
                                            message=message,
                                            retrieve_src=f"Retrieved code content using keyword search (bm25)."
                                            )
-                
+
                 cur_query_results.append(query_result)
             else:
                 for span_id in node.metadata['span_ids']:
@@ -846,7 +902,7 @@ def bm25_content_retrieve(
                     print(nid)
                     if searcher.has_node(nid):
                         ndata = searcher.get_node_data([nid], return_code_content=True)[0]
-                        query_result = QueryResult(query_info=query_info, format_mode='preview', 
+                        query_result = QueryResult(query_info=query_info, format_mode='preview',
                                                    nid=ndata['node_id'],
                                                    ntype=ndata['type'],
                                                    start_line=ndata['start_line'],
@@ -856,7 +912,7 @@ def bm25_content_retrieve(
                         cur_query_results.append(query_result)
                     else:
                         continue
-        
+
     cur_query_results = cur_query_results[:5]
     return cur_query_results
 
@@ -955,7 +1011,7 @@ def explore_graph_structure(
     Returns:
     """
     start_entities, hints = _validate_graph_explorer_inputs(start_entities, direction, traversal_depth,
-                                            entity_type_filter, dependency_type_filter)
+                                                            entity_type_filter, dependency_type_filter)
     G = get_graph()
 
     rtn_str = traverse_graph_structure(G, start_entities, direction, traversal_depth,
@@ -1059,7 +1115,7 @@ def explore_tree_structure(
                                         dependency_type_filter)
                 for node in start_entities]
         rtn_str = "\n\n".join(rtns)
-        
+
     if hints.strip():
         rtn_str += "\n\n" + hints
     return rtn_str.strip()

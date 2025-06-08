@@ -32,6 +32,19 @@ def find_matching_files_from_list(file_list, file_pattern):
 
 
 def get_meta_data(target_id, dataset:str="princeton-nlp/SWE-bench_Lite", split:str = "test"):
+    """
+    从 Hugging Face 加载一个指定的数据集，并选择其中的一个子集（split）。
+
+    Args:
+        target_id (str): 数据集实例样本唯一标识，格式为 repo-issueID 组合，比如：avantifellows/quiz-backend仓库，编号为84的issue，该样本的唯一标识是avantifellows__quiz-backend-84
+        dataset (str): 数据集名称，比如：czlll/Loc-Bench_V1
+        split (str, optional): 使用数据集的哪个子集，常见的值有：
+            "train"：训练集
+            "validation"：验证集
+            "test[:10]"：测试集的前 10 条记录
+            "train[:10%]"：训练集的前 10%
+            也可以是其他分片语法（Hugging Face 支持切片加载）
+    """
     swe_bench_data = load_dataset(dataset, split=split)
     bench_data = [x for x in swe_bench_data if x["instance_id"] == target_id][0]
     return bench_data
