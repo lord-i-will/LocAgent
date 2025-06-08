@@ -172,6 +172,7 @@ test_*.py
 
 .idea
 .DS_Store
+.run/
 
 baselines/
 sft/wandb

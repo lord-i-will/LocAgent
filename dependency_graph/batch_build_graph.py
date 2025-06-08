@@ -79,9 +79,11 @@ if __name__ == '__main__':
     # load selected repo instance id and instance_data
     if args.download_repo:
         selected_instance_data = {}
-        bench_data = load_dataset(args.dataset, split=args.split)
+        # 从 Hugging Face 加载一个指定的数据集，并选择其中的一个子集（split）
         if args.max_samples > 0:
-            bench_data = bench_data.select(range(args.max_samples))
+            bench_data = load_dataset(args.dataset, split=f"{args.split}[:{args.max_samples}]")
+        else:
+            bench_data = load_dataset(args.dataset, split=args.split)
 
         if args.instance_id_path and osp.exists(args.instance_id_path):
             with open(args.instance_id_path, 'r') as f:

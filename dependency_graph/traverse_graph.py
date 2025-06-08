@@ -5,13 +5,22 @@ from typing import Optional, List
 import networkx as nx
 
 from dependency_graph.build_graph import (
-    VALID_EDGE_TYPES, VALID_NODE_TYPES, 
+    VALID_EDGE_TYPES, VALID_NODE_TYPES,
     NODE_TYPE_FILE, NODE_TYPE_CLASS, NODE_TYPE_FUNCTION,
     EDGE_TYPE_CONTAINS
 )
 
+
 def is_test_file(nid):
-    # input node id (e.g., 'tests/_core.py:test') and output whether it belongs to a test file
+    """
+    check whether an entity node belongs to a test file(*.py)
+
+    Args:
+        nid (str): 实体节点ID，比如：function类型节点ID，'tests/_core.py:test'
+
+    Returns:
+        bool: 是否为测试文件
+    """
     file_path = nid.split(':')[0]
     word_list = re.split(r" |_|\/", file_path.lower())  # split by ' ', '_', and '/'
     return any([word.startswith('test') for word in word_list])
@@ -59,25 +68,41 @@ class RepoEntitySearcher:
 
     @property
     def global_name_dict(self):
+        """
+        构建全局名称字典（轻量级的全局倒排索引），加速基于实体名字的实体搜索。比如：
+            1. 用户查询 "foo"，可以命中 foo.py
+            2. 查询 "my_method"，可以命中 MyClass.my_method
+            3. 查询 "some_func"，可以命中多个文件中的 some_func 定义
+        同时使用了 @property 装饰器，可以像访问属性一样调用：searcher.global_name_dict。
+        第一次访问时进行构建，之后就缓存起来，避免重复计算。
+
+        Returns:
+            dict: 键是file、class、function节点名，值为包含该名称的节点ID列表。比如：
+                1. 文件名匹配：foo或者foo.py -> ["src/foo.py", "src/bar/foo.py"]
+                2. 类名匹配：MyClass -> ["src/foo.py:MyClass"]
+                3. 方法匹配：my_method -> ["src/foo.py:MyClass.my_method"]
+                4. 函数匹配：some_func -> ["some_func", "src/foo.py:some_func"]
+        """
         if self._global_name_dict is None:  # Compute only once
             _global_name_dict = defaultdict(list)
             for nid in self.G.nodes():
                 if is_test_file(nid): continue
 
+                # 如果是file节点，比如：src/foo.py
+                # 最终可以用文件名（含或不含后缀）都能检索到该file节点。
                 if nid.endswith('.py'):
-                    fname = nid.split('/')[-1]
+                    fname = nid.split('/')[-1]  # foo.py
                     _global_name_dict[fname].append(nid)
 
-                    name = nid[:-(len('.py'))].split('/')[-1]
+                    name = nid[:-(len('.py'))].split('/')[-1]  # foo
                     _global_name_dict[name].append(nid)
-
+                # 如果是class或function节点，比如：src/foo.py:MyClass.my_method
                 elif ':' in nid:
-                    name = nid.split(':')[-1].split('.')[-1]
+                    name = nid.split(':')[-1].split('.')[-1]  # my_method
                     _global_name_dict[name].append(nid)
 
             self._global_name_dict = _global_name_dict
         return self._global_name_dict
-
 
     @property
     def global_name_dict_lowercase(self):
@@ -100,12 +125,14 @@ class RepoEntitySearcher:
             self._global_name_dict_lowercase = _global_name_dict_lowercase
         return self._global_name_dict_lowercase
 
-
     def has_node(self, nid, include_test=False):
+        """
+        判断图中是否包含名为 nid 的节点，并带有一个过滤机制，用于跳过“测试文件”产生的节点。
+        """
         if not include_test and is_test_file(nid):
             return False
+        # 实际调用的是 NetworkX 的 __contains__（由 NetworkX 中的 Graph 基类实现的，MultiDiGraph 继承了这个方法），会检查图中是否有名为 nid 的节点
         return nid in self.G
-
 
     def get_node_data(self, nids, return_code_content=False, wrap_with_ln=True):
         rtn = []
@@ -132,7 +159,7 @@ class RepoEntitySearcher:
                     formatted_data['end_line'] = node_data['end_line']
                     end_line = node_data['end_line']
                 elif formatted_data['type'] == NODE_TYPE_FILE:
-                    end_line = len(node_data['code'].split("\n")) # - 1
+                    end_line = len(node_data['code'].split("\n"))  # - 1
                     formatted_data['end_line'] = end_line
                 else:
                     end_line = 1
@@ -144,8 +171,7 @@ class RepoEntitySearcher:
                     formatted_data['code_content'] = node_data['code']
             rtn.append(formatted_data)
         return rtn
-    
-    
+
     def get_all_nodes_by_type(self, type):
         assert type in VALID_NODE_TYPES
         nodes = []
@@ -179,7 +205,7 @@ class RepoEntitySearcher:
                         'methods': []
                     }
                     dp_searcher = RepoDependencySearcher(self.G)
-                    methods = dp_searcher.get_neighbors(nid, 'forward', 
+                    methods = dp_searcher.get_neighbors(nid, 'forward',
                                                         ntype_filter=[NODE_TYPE_FUNCTION],
                                                         etype_filter=[EDGE_TYPE_CONTAINS])[0]
                     formatted_methods = []
@@ -393,7 +419,7 @@ def traverse_tree_structure(G, root, direction='downstream', hops=2,
             return edge_type_filter is not None and _etype not in edge_type_filter
 
         if 'downstream' == edirection or (node == root and direction == 'both'):
-        # if 'downstream' == edirection or direction == 'both':
+            # if 'downstream' == edirection or direction == 'both':
             for neighbor in G.successors(node):
                 neigh_type = G.nodes[neighbor]['type']
                 if is_ntype_not_valid(neigh_type):
@@ -411,7 +437,7 @@ def traverse_tree_structure(G, root, direction='downstream', hops=2,
                             traversed_edges.add((node, etype, neighbor))
 
         if 'upstream' == edirection or (node == root and direction == 'both'):
-        # if 'upstream' == edirection or direction == 'both':
+            # if 'upstream' == edirection or direction == 'both':
             for neighbor in G.predecessors(node):
                 neigh_type = G.nodes[neighbor]['type']
                 if is_ntype_not_valid(neigh_type):
