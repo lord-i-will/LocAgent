@@ -76,11 +76,22 @@ def filter_dataset(dataset, filter_column: str, used_list: str):
 
 
 def get_task_instruction(instance: dict, task: str = 'auto_search', include_pr=False, include_hint=False):
+    """
+    负责根据不同的任务类型生成 智能体任务指令（instruction）。
+
+    Args:
+        instance (dict): 数据集样本（包含问题描述等字段）
+        task (str): 指定任务类型
+        include_pr (bool): 是否附加 PR（problem statement）内容
+        include_hint (bool): 是否附加一些硬性提示（规则说明）
+    """
     output_format = None
     instruction = ""
 
     # for auto-search pipeline
     if task.strip() == 'auto_search':
+        # instance_id是数据集实例样本唯一标识，格式为 repo-issueID 组合，
+        # 比如：avantifellows/quiz-backend仓库，编号为84的issue，该样本的唯一标识是avantifellows__quiz-backend-84
         task_description = auto_search.TASK_INSTRUECTION.format(
             package_name=instance['instance_id'].split('_')[0]
         )
@@ -95,7 +106,15 @@ def get_task_instruction(instance: dict, task: str = 'auto_search', include_pr=F
     instruction += task_description
 
     if include_pr:
+        # Optimize Face Centroid Calculations
+        # If `Grid.face_lon` does not exist, `_populate_face_centroids()`, actually `_construct_face_centroids()` in it, takes extremely long for large datasets.
+        # For instance, the benchmark/profiling below is for a ~4GB SCREAM dataset, around 5 mins:
+        #
+        # @rajeeja FYI: I'm already working on this and have gotten optimized results, which will be good for \"cartesian\" parts of the face center calculations, but you may want to look into the `Welzl` parts as well, i.e. `_populate_face_centerpoints()`.
+        #
+        # <img width=\"1065\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/9aba545f-0fdb-4a4c-b2be-b8fb9ffe087e\" />
         problem_statement = instance['problem_statement']
+        # 将第一行作为标题（title），剩下部分作为正文（description）填入 PR 模板中，然后拼接到 instruction。
         instruction += general_prompt.PR_TEMPLATE.format(
             title=problem_statement.strip().split('\n')[0],
             description='\n'.join(problem_statement.strip().split('\n')[1:]).strip()
@@ -326,13 +345,15 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
         set_current_issue(instance_data=bug, rank=rank)
 
         # loc result
-        raw_output_loc = []
-        loc_trajs = {'trajs': []}
+        raw_output_loc = []  # 存储所有样本 localization 的原始结果
+        loc_trajs = {'trajs': []}  # 存储所有尝试的提示轨迹
         total_prompt_tokens, total_completion_tokens = 0, 0
 
+        # 每个样本尝试 args.num_samples 次
         for _ in range(args.num_samples):
             logger.info("=" * 60)
             logger.info(f"==== rank {rank} begin localizing {instance_id} ====")
+            # 内部重试机制，一个 sample 可失败重试多轮（如 API Timeout、BadRequest、空结果等）。
             max_attempt_num = args.max_attempt_num
             while max_attempt_num:
                 logger.info("=" * 60)

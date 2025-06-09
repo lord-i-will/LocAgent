@@ -12,6 +12,15 @@ import_functions(
 )
 __all__ = repo_ops.__all__ # + retriever.__all__
 
+# 最终会生成如下三个func的使用说明：'search_code_snippets','explore_graph_structure','explore_tree_structure'
+# 格式如下：
+# search_code_snippets(a, b=1):
+#     This function does something.
+#     It takes two arguments.
+#
+# explore_graph_structure(a, b=1):
+#     This function does something.
+#     It takes two arguments.
 DOCUMENTATION = ''
 for func_name in __all__:
     func = globals()[func_name]

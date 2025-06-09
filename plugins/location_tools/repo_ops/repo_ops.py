@@ -59,6 +59,10 @@ def set_current_issue(instance_id: str = None,
                       dataset: str = "princeton-nlp/SWE-bench_Lite", split: str = "test", rank=0):
     """
     初始化一个issue的分析上下文，包括数据集实例样本、数据集实例涉及的源码repo下载、构建代码图并从图中提取所有的文件/类/函数实体节点。
+    先判断代码仓库索引是否已构建过：
+        先从环境变量获取GRAPH_INDEX_DIR的值，然后拼装索引文件路径{GRAPH_INDEX_DIR}/{instance_id}.pkl，比如：./index_data/Loc-Bench_V1/graph_index_v2.3/avantifellows__quiz-backend-84.pkl
+    1.如果存在，直接使用pickle.load加载图。
+    2.如果不存在，则从数据集实例样本中提取repo信息并下载源码到'playground/uuid.uuid4'临时目录下，然后调用build_graph构建图。
 
     Args:
         instance_id (str): 数据集实例样本唯一标识，格式为 repo-issueID 组合，比如：avantifellows/quiz-backend仓库，编号为84的issue，该样本的唯一标识是avantifellows__quiz-backend-84
