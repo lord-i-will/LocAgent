@@ -142,6 +142,26 @@ def auto_search_process(result_queue,
                         temp=1.0,
                         max_iteration_num=20,
                         use_function_calling=True):
+    """
+    迭代式 agent driver，开展和LLM之间的“交互式多轮定位”过程，这个过程是自动化的，会不断向 LLM 提交 prompt，调用工具函数（若需要），并最终输出：
+        1.模型返回的 final 定位结果（如文件名列表）
+        2.完整 messages 记录（对话历史）
+        3.轨迹数据（函数调用过程、token 用量等）
+
+    Args:
+        result_queue (Queue): 用于向主进程返回结果的队列，结果是三元组(final_output, messages, traj_data)
+        model_name (str): 指定使用的模型
+        messages (List[dict]): 初始 prompt 序列，包括 system + user，每个消息是一个字典，包含角色（role）和内容（content）
+        fake_user_msg (str): 用于辅助 function-calling 中对 tool 结果追加 user 消息
+        tools (List[dict], optional): 提供给模型的 function-calling 工具接口（若启用），每个工具是一个字典，包含名称、描述和函数
+        traj_data (dict, optional): 轨迹数据，包含消息和使用情况
+        temp (float, optional): 温度参数，控制生成的随机性
+        max_iteration_num (int, optional): 最多尝试多少轮互动，即最大迭代次数，超过该次数则停止交互
+        use_function_calling (bool, optional): 是否使用 function-calling 模式
+
+    Returns:
+        None
+    """
     if tools and ('hosted_vllm' in model_name or 'qwen' in model_name.lower()
             #             #   or model_name=='azure/gpt-4o'
             #             #   or model_name == 'litellm_proxy/o3-mini-2025-01-31'
@@ -155,7 +175,7 @@ def auto_search_process(result_queue,
                                                                   add_in_context_learning_example=False)
 
     # code_history = []
-    parser = ResponseParser()
+    parser = ResponseParser()  # 用于处理模型输出
     if not traj_data:
         traj_msgs = messages.copy()
         prompt_tokens = 0
@@ -172,6 +192,7 @@ def auto_search_process(result_queue,
     while not finish:
         cur_interation_num += 1
         if cur_interation_num == max_iteration_num:
+            # 强制提示模型：这是最后一次请求，请结束
             messages.append({
                 'role': 'user',
                 'content': 'The Maximum number of interation has been reached, please generate your final output with required format and use <finish></finish> to exit.'
@@ -184,6 +205,7 @@ def auto_search_process(result_queue,
         try:
             # new conversation
             if tools and ('hosted_vllm' in model_name or 'qwen' in model_name.lower()):
+                # 不支持原生 function-calling 的模型，需要切换调用方式
                 messages = convert_fncall_messages_to_non_fncall_messages(messages, tools,
                                                                           add_in_context_learning_example=False)
                 response = litellm.completion(
@@ -193,6 +215,7 @@ def auto_search_process(result_queue,
                     stop=NON_FNCALL_STOP_WORDS
                 )
             elif tools:
+                # 支持的则通过 tools 参数传入函数定义，标准 OpenAI/Claude 风格
                 response = litellm.completion(
                     model=model_name,
                     tools=tools,
@@ -201,6 +224,7 @@ def auto_search_process(result_queue,
                     # stop=['</execute_ipython>'], #</finish>',
                 )
             else:
+                # 无工具的则直接调用
                 response = litellm.completion(
                     model=model_name,
                     messages=messages,
@@ -212,6 +236,7 @@ def auto_search_process(result_queue,
             result_queue.put({'error': str(e), 'type': 'BadRequestError'})
             return
 
+        # 防止模型卡在 loop 中重复回答，通过追加 user 提示打断。
         if last_message and response.choices[0].message.content == last_message:
             messages.append({
                 "role": "user",
@@ -225,6 +250,7 @@ def auto_search_process(result_queue,
 
         raw_response = deepcopy(response)
         # logging.info('response.choices[0].message')
+        # 若模型本身不支持 function-calling，但回复的是“工具调用式”的字符串，需模拟还原为 LiteLLMMessage 格式，兼容后续解析。
         if tools and ('hosted_vllm' in model_name or 'qwen' in model_name.lower()
                       or 'deepseek' in model_name
         ):
@@ -252,23 +278,27 @@ def auto_search_process(result_queue,
         prompt_tokens += response.usage.prompt_tokens
         completion_tokens += response.usage.completion_tokens
 
+        # 核心逻辑：解析模型输出，根据输出的 action 类型采取不同的处理方式。
         actions = parser.parse(response)
         if not isinstance(actions, List):
             actions = [actions]
         for action in actions:
             logging.debug(action.action_type)
             if action.action_type == ActionType.FINISH:
+                # 输出结果并退出
                 final_output = action.thought
                 logging.info('=' * 15)
                 logging.info("\nFinal Response:=\n" + final_output)
                 finish = True  # break
             elif action.action_type == ActionType.MESSAGE:
+                # 模型自己思考 + 推理，要求继续
                 logging.debug("thought:\n" + action.content)
                 # check if enough
                 messages.append({"role": "user", "content": fake_user_msg})
                 traj_msgs.append({"role": "user", "content": fake_user_msg})
                 # continue
             elif action.action_type == ActionType.RUN_IPYTHON:
+                # 尝试执行代码段（如文件搜索、依赖图构建）
                 ipython_code = action.code.strip('`')
                 logging.info(f"Executing code:\n```\n{ipython_code}\n```")
                 function_response = execute_ipython(ipython_code)

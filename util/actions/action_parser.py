@@ -19,7 +19,15 @@ class ResponseParser:
         self.default_parser = CodeActActionParserMessage()
 
     def parse(self, response) -> Union[List[Action], Action]:
+        """
+        将模型的原始回复转换为结构化的「动作」对象 Action，以供 Agent 逻辑（如 auto_search_process）进一步执行。
+
+        Args:
+            response: 模型的原始回复。
+        """
         # using tool calling
+        # tool_calls 是 OpenAI Function Calling 或其他兼容模型的标准字段，表示模型调用了函数。
+        # 如果存在 tool_calls，则调用 parse_tool_calls_to_actions() 将其转换为 Action 对象
         if response.choices[0].message.tool_calls:
             try:
                 actions = parse_tool_calls_to_actions(response)
@@ -28,6 +36,7 @@ class ResponseParser:
                 logging.info("Un know tools")
         
         # using code to call tools
+        # 如果 tool_calls 不存在（或失败），则视为普通自然语言/代码输出。
         action_str = self.parse_response(response)
         return self.parse_action(action_str)
 
