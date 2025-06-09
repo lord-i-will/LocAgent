@@ -85,6 +85,8 @@ class RepoEntitySearcher:
         """
         if self._global_name_dict is None:  # Compute only once
             _global_name_dict = defaultdict(list)
+            # G.nodes() -> ["app", "app/models.py","app/schemas.py:PyObjectId","app/schemas.py:PyObjectId.validate",
+            # "app/routers/sessions.py:create_session","app/routers/__init__.py"]
             for nid in self.G.nodes():
                 if is_test_file(nid): continue
 
