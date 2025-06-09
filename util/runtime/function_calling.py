@@ -45,7 +45,8 @@ def response_to_actions(response: ModelResponse) -> list[Action]:
     Args:
         response: LLM 的原始响应。
     Returns:
-        list[Action]: 包含 Action 实例的列表，每个都是 IPythonRunCellAction 类型，代表要在 Python 环境中执行的动作。
+        list[Action]: 包含 Action 实例的列表，Action有 MessageAction、FinishAction、IPythonRunCellAction 三种类型，
+        其中IPythonRunCellAction代表要在 Python 环境中执行的动作。
     """
     actions: list[Action] = []
     assert len(response.choices) == 1, 'Only one choice is supported for now'

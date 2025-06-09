@@ -41,6 +41,13 @@ class ResponseParser:
         return self.parse_action(action_str)
 
     def parse_response(self, response) -> str:
+        """
+        从模型响应中提取原始的字符串命令（action），并修复可能不完整的 XML-like 标签。
+        Args:
+            response: 模型的原始回复。
+        Returns:
+            str: action字符串，比如：call <execute_bash>bash</execute_bash>、<execute_ipython>python</execute_ipython>、<execute_browse>browse</execute_browse>
+        """
         action = response.choices[0].message.content
         if action is None:
             return ''
