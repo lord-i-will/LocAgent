@@ -50,6 +50,7 @@ def fuzzy_retrieve_from_graph_nodes(
         
     # Custom function to split tokens on underscores and hyphens
     def custom_tokenizer(s):
+        # 把 snake_case、kebab-case 变成单词集合，比如：'my_func-name' → ['my', 'func', 'name']
         return re.findall(r'\b\w+\b', s.replace('_', ' ').replace('-', ' '))
 
     # Use token_set_ratio with custom tokenizer

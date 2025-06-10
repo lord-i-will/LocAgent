@@ -541,7 +541,11 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
 
 
 def localize(args):
-    bench_data = load_dataset(args.dataset, split=args.split)
+    # 从 Hugging Face 加载一个指定的数据集，并选择其中的一个子集（split）
+    if args.eval_n_limit > 0:
+        bench_data = load_dataset(args.dataset, split=f"{args.split}[:{args.eval_n_limit}]")
+    else:
+        bench_data = load_dataset(args.dataset, split=args.split)
     bench_tests = filter_dataset(bench_data, 'instance_id', args.used_list)
     if args.eval_n_limit:
         eval_n_limit = min(args.eval_n_limit, len(bench_tests))

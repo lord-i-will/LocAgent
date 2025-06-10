@@ -280,7 +280,7 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
     Args:
         term (str): 自然语言描述的关键词，如 "class MyClass"、"def foo"、"function bar.test"。
         include_files (List[str]): 可选，文件过滤器，只从指定文件中查找。
-        prefix_term (str): 可选，限定搜索范围的实体前缀，用于辅助消除歧义，如 "class_name.method_name"。
+        prefix_term (str): 可选，限定搜索范围的实体前缀，用于辅助消除歧义，如类名前缀 "src/foo.py:MyClass"。
 
     Returns:
         dict: 键为实体类型（directory、file、class、function），值为对应的实体ID列表。
@@ -336,8 +336,11 @@ def search_entity(query_info, include_files: List[str] = None):
     从代码库中搜索实体，实体包含directory、file、class、function类型节点。
 
     Args:
-        query_info (QueryInfo): 查询信息，通常包含用户输入的查询术语（关键词）。
-        include_files (List[str]): 表示需要限定搜索范围的文件路径集合。
+        query_info (QueryInfo): 查询信息，通常包含一些查询术语（关键词）， 比如：src/my_file.py、src/my_file.py:MyClass.func_name、MyClass
+        include_files (option List[str]): 限定搜索范围的文件路径集合，比如：src/example.py、src/**/*.py
+
+    Returns:
+        tuple (List[QueryResult], continue_search): 查询结果列表，每个结果包含实体ID、实体类型、起始行号、结束行号等信息。
     """
     term = query_info.term
     searcher = get_graph_entity_searcher()
@@ -347,6 +350,7 @@ def search_entity(query_info, include_files: List[str] = None):
     cur_query_results = []
 
     # first: exact match in graph
+    # 如果图中有完全匹配的节点（例如查 src/foo.py:MyClass.method，正好是某节点 ID），就生成一个完整格式的 QueryResult，无需再往下走。
     if searcher.has_node(term):
         continue_search = False
         query_result = QueryResult(query_info=query_info, format_mode='complete', nid=term,
@@ -355,6 +359,8 @@ def search_entity(query_info, include_files: List[str] = None):
         cur_query_results.append(query_result)
 
     # TODO: __init__ not exsit
+    # 如果用户搜索的是某个类的构造函数（如 MyClass.__init__），但结构图中只记录 MyClass（未单独记录 __init__），就退一步尝试直接查找 MyClass。
+    # 创建一个 preview 级别结果，只展示其整体代码范围。
     elif term.endswith('.__init__'):
         nid = term[:-(len('.__init__'))]
         if searcher.has_node(nid):
@@ -380,9 +386,15 @@ def search_entity(query_info, include_files: List[str] = None):
         if not found_entities_dict and '.' in term:
             # for cases: class_name.method_name
             try:
+                # 拆出 class_name，比如：src/foo.py:MyClass
+                # 假设 term 是 src/foo.py:MyClass.method
+                # term.split('.')[:-1] -> [src/foo, py:MyClass]
+                # '.'.join() 还原-> src/foo.py:MyClass
+                # .split()[-1] 按空格拆分，取最后一个 -> src/foo.py:MyClass
                 prefix_term = '.'.join(term.split('.')[:-1]).split()[-1]  # incase of 'class '/ 'function '
             except IndexError:
                 prefix_term = None
+            # 拆出method_name，比如：method
             split_term = term.split('.')[-1].strip()
             used_term = split_term
             found_entities_dict = search_entity_in_global_dict(split_term, include_files, prefix_term)
@@ -425,10 +437,10 @@ def search_entity(query_info, include_files: List[str] = None):
                                                        )
                             cur_query_results.append(query_result)
                     if not use_sub_term:
-                        # 如果是原词命中的，就停止后续搜索
+                        # 如果是原始关键词命中的，就停止后续搜索
                         continue_search = False
                     else:
-                        # 如果用了“子词”，继续后续阶段（比如代码片段匹配或embedding匹配）。
+                        # 如果用了“子词”，继续后续阶段（比如 BM25 检索或 embedding 匹配）。
                         continue_search = True
 
     # third: bm25 search (entity + content)
@@ -508,6 +520,9 @@ def merge_query_results(query_results):
 
 
 def rank_and_aggr_query_results(query_results, fixed_query_info_list):
+    """
+    对合并后的结果进行排序与聚合打分。
+    """
     query_info_list_dict = {}
 
     for qr in query_results:
@@ -602,6 +617,7 @@ def search_code_snippets(
     """
 
     files, _, _ = get_current_repo_modules()
+    # all_file_paths = ["src/utils.py", "main.py", "tests/test_main.py"]
     all_file_paths = [file['name'] for file in files]
 
     result = ""
@@ -628,9 +644,11 @@ def search_code_snippets(
 
         joint_terms = deepcopy(filter_terms)
         if len(filter_terms) > 1:
+            # 若有多个词，会在末尾添加一个合并搜索词（例如：["foo", "bar", "foo bar"]），便于执行模糊匹配或段落级搜索。
             filter_terms.append(' '.join(filter_terms))
 
         for i, term in enumerate(filter_terms):
+            # 移除字符串首尾所有空白字符和.
             term = term.strip().strip('.')
             if not term: continue
 
@@ -647,7 +665,7 @@ def search_code_snippets(
             if continue_search:
                 query_results = bm25_content_retrieve(query_info=query_info, include_files=include_files)
                 cur_query_results.extend(query_results)
-
+            # 如果不需要继续搜索，且还不是最后一个组合词，就尝试调整组合词，以避免重复或无效查询。
             elif i != (len(filter_terms) - 1):
                 joint_terms[i] = ''
                 filter_terms[-1] = ' '.join([t for t in joint_terms if t.strip()])
@@ -656,10 +674,12 @@ def search_code_snippets(
 
             all_query_results.extend(cur_query_results)
 
+    # 如果 file_path_or_pattern 是某个具体文件（即不是通配符），且指定了行号 line_nums，则启用基于“文件 + 行号”的代码片段定位逻辑。
     if file_path_or_pattern in all_file_paths and line_nums:
         if isinstance(line_nums, int):
             line_nums = [line_nums]
         file_path = file_path_or_pattern
+        # 构建查询词格式为：xxx.py:line 12, 20
         term = file_path + ':line ' + ', '.join([str(line) for line in line_nums])
         # result += f"Search `line(s) {line_nums}` in file `{file_path}` ...\n"
         query_info = QueryInfo(term=term, line_nums=line_nums, file_path_or_pattern=file_path)
@@ -668,6 +688,7 @@ def search_code_snippets(
         query_results = get_code_block_by_line_nums(query_info)
         all_query_results.extend(query_results)
 
+    # 将之前所有关键词、行号等多路检索到的结果合并成一组统一格式的结构。
     merged_results = merge_query_results(all_query_results)
     ranked_query_to_results = rank_and_aggr_query_results(merged_results, query_info_list)
 
@@ -675,41 +696,53 @@ def search_code_snippets(
     # format_mode: 'complete', 'preview', 'code_snippet', 'fold': 4
     searcher = get_graph_entity_searcher()
 
+    # format_to_results是一个dict，key是format_mode（fold、complete、preview、code_snippet），value是List[QueryResult]
     for query_infos, format_to_results in ranked_query_to_results.items():
+        # 构建 Markdown 风格标题，展示查询词。示例：
+        # ##Searching for term "load_model", "infer"
+        # ### Search Result:
         term_desc = ', '.join([f'"{query.term}"' for query in query_infos])
         result += f'##Searching for term {term_desc}...\n'
         result += f'### Search Result:\n'
         cur_result = ''
+        # 对每种 format_mode（fold、complete、preview、code_snippet）逐一处理。
         for format_mode, query_results in format_to_results.items():
+            # fold 模式用于显示压缩后的代码结构，按来源分段（比如多个函数来自同一个文件，就聚合起来）。
             if format_mode == 'fold':
                 cur_retrieve_src = ''
                 for qr in query_results:
                     if not cur_retrieve_src:
                         cur_retrieve_src = qr.retrieve_src
 
+                    # 如果来源文件路径变化，就添加文件标注 Source: xxx.py
                     if cur_retrieve_src != qr.retrieve_src:
                         cur_result += "Source: " + cur_retrieve_src + '\n\n'
                         cur_retrieve_src = qr.retrieve_src
 
                     cur_result += qr.format_output(searcher)
 
+                # 尾部再标一次最后的来源文件。
                 cur_result += "Source: " + cur_retrieve_src + '\n'
+                # 如果多个结果块被折叠展示，提醒用户使用更细粒度关键词获取完整内容。
                 if len(query_results) > 1:
                     cur_result += 'Hint: Use more detailed query to get the full content of some if needed.\n'
                 else:
                     cur_result += f'Hint: Search `{query_results[0].nid}` for the full content if needed.\n'
                 cur_result += '\n'
 
+            # 完整输出全部内容，不折叠、不截断。
             elif format_mode == 'complete':
                 for qr in query_results:
                     cur_result += qr.format_output(searcher)
                     cur_result += '\n'
 
+            # 预览模式下，优先保留大代码块（大于 100 行），小代码块会按文件聚类并进一步筛选代表性结构。
             elif format_mode == 'preview':
                 # Remove the small modules, leaving only the large ones
                 filtered_results = []
                 grouped_by_file = defaultdict(list)
                 for qr in query_results:
+                    # 小于 100 行的结果被归入分组候选，大于 100 行的直接保留。
                     if (qr.end_line - qr.start_line) < 100:
                         grouped_by_file[qr.file_path].append(qr)
                     else:
@@ -731,6 +764,7 @@ def search_code_snippets(
                     cur_result += qr.format_output(searcher)
                     cur_result += '\n'
 
+            # 简洁代码展示，去除结构信息或上下文，用于快速参考某段代码。
             elif format_mode == 'code_snippet':
                 for qr in query_results:
                     cur_result += qr.format_output(searcher)

@@ -46,7 +46,7 @@ class ResponseParser:
         Args:
             response: 模型的原始回复。
         Returns:
-            str: action字符串，比如：call <execute_bash>bash</execute_bash>、<execute_ipython>python</execute_ipython>、<execute_browse>browse</execute_browse>
+            str: 修复后的action字符串，比如：模型返回的是<execute_ipython>print(42)，修复后返回<execute_ipython>print(42)</execute_ipython>
         """
         action = response.choices[0].message.content
         if action is None:

@@ -24,7 +24,7 @@ RapidFuzz==3.10.1
 # LLM/嵌入 & OpenAI 相关
 openai==1.54.3
 tiktoken==0.8.0
-litellm==1.52.1
+litellm==1.72.2
 llama-cloud==0.1.4
 llama-index==0.11.22
 llama-index-agent-openai==0.3.4
