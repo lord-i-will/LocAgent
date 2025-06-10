@@ -48,8 +48,8 @@ from util.runtime.fn_call_converter import (
 )
 
 
-# litellm.set_verbose=True
-# os.environ['LITELLM_LOG'] = 'DEBUG
+litellm.set_verbose=True
+os.environ['LITELLM_LOG'] = 'DEBUG'
 
 
 def filter_dataset(dataset, filter_column: str, used_list: str):
@@ -660,7 +660,7 @@ def main():
     parser.add_argument(
         "--model", type=str,
         default="openai/gpt-4o-2024-05-13",
-        choices=["gpt-4o",
+        choices=["gpt-4o","huggingface/together/deepseek-ai/DeepSeek-R1",
                  "azure/gpt-4o", "openai/gpt-4o-2024-05-13",
                  "deepseek/deepseek-chat", "deepseek-ai/DeepSeek-R1",
                  "litellm_proxy/claude-3-5-sonnet-20241022", "litellm_proxy/gpt-4o-2024-05-13",

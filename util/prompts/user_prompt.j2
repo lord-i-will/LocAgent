@@ -26,7 +26,7 @@ search_terms = [
     "payment_id",
     "transaction"
 ]
-search_in_repo(search_terms)
+search_code_snippets(search_terms)
 </execute_ipython>"
 
 USER:
@@ -98,7 +98,7 @@ ASSISTANT:
 
 Given the flow, it seems that payment_id may not be present in payment_info by the time process_payment() is called. Let's examine the code in shopping_web/db/transaction_repository.py to understand where this could happen.
 <execute_ipython>
-get_file_structures(["shopping_web/db/transaction_repository.py"])
+get_entity_contents(["shopping_web/db/transaction_repository.py"])
 </execute_ipython>
 
 USER:
@@ -121,7 +121,7 @@ class TransactionRepository:
 ASSISTANT:
 I'll retrieve the actual code for the `insert_transaction()` method in `transaction_repository.py` to see if the issue originates there.
 <execute_bash>
-search_method("insert_transaction", class="TransactionRepository", file_pattern="shopping_web/db/transaction_repository.py")
+search_code_snippets(search_terms=["TransactionRepository.insert_transaction"], file_path_or_pattern="shopping_web/db/transaction_repository.py")
 </execute_bash>
 
 USER:
@@ -144,7 +144,7 @@ The `insert_transaction()` method raises a `KeyError` when `payment_id` is missi
 Now, let's trace where `insert_transaction()` is being called to see if it's being passed incorrectly.
 Let's look for the dependencies of `TransactionRepository.insert_transaction`.
 <execute_bash>
-search_invoke_and_reference("TransactionRepository.insert_transaction", "shopping_web/db/transaction_repository.py", "function")
+explore_tree_structure(start_entities=["shopping_web/db/transaction_repository.py:TransactionRepository.insert_transaction"], direction="upstream", traversal_depth=1, dependency_type_filter=["invokes"])
 </execute_bash>
 
 USER:
@@ -168,7 +168,7 @@ The `process_payment()` function in `payment_service.py` calls `insert_transacti
 Let's trace where `process_payment()` is being called from to see if it's being passed incomplete data upstream.
 I'll now trace the dependencies of `process_payment()`.
 <execute_bash>
-search_invoke_and_reference("process_payment", "shopping_web/services/payment_service.py", "function")
+explore_tree_structure(start_entities=["shopping_web/services/payment_service.py:process_payment"], direction="upstream", traversal_depth=1, dependency_type_filter=["invokes"])
 </execute_bash>
 
 USER:
@@ -201,8 +201,8 @@ The `process_order()` calls `process_payment()` without including `payment_id`. 
 Similarly, in billing_service.py, we should confirm that bill_data includes payment_id before being passed to process_billing().
 Let's trace where bill_data are created to verify whether it includes payment_id.
 
-<execute_ipython> 
-search_method("create_billing_data")
+<execute_ipython>
+search_code_snippets(search_terms=["create_billing_data"])
 </execute_ipython>
 
 USER:
