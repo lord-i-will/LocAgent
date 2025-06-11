@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+import openai
 import logging
 import logging.handlers
 import time
@@ -48,8 +49,8 @@ from util.runtime.fn_call_converter import (
 )
 
 
-litellm.set_verbose=True
-os.environ['LITELLM_LOG'] = 'DEBUG'
+# litellm.set_verbose = True
+# os.environ['LITELLM_LOG'] = 'DEBUG'
 
 
 def filter_dataset(dataset, filter_column: str, used_list: str):
@@ -186,6 +187,11 @@ def auto_search_process(result_queue,
         prompt_tokens = traj_data['usage']['prompt_tokens']
         completion_tokens = traj_data['usage']['completion_tokens']
 
+    llm_client = openai.AzureOpenAI(
+        azure_endpoint=os.getenv("BD_GPT_BASE_URL"),
+        api_version="2024-03-01-preview",
+        api_key=os.getenv("BD_GPT_AK"),
+    )
     cur_interation_num = 0
     last_message = None
     finish = False
@@ -208,32 +214,56 @@ def auto_search_process(result_queue,
                 # 不支持原生 function-calling 的模型，需要切换调用方式
                 messages = convert_fncall_messages_to_non_fncall_messages(messages, tools,
                                                                           add_in_context_learning_example=False)
-                response = litellm.completion(
+                response = llm_client.chat.completions.create(
                     model=model_name,
-                    temperature=temp, top_p=0.8, repetition_penalty=1.05,
+                    temperature=temp,
+                    top_p=0.8,
+                    presence_penalty=1.05,
                     messages=messages,
-                    stop=NON_FNCALL_STOP_WORDS
+                    stop=NON_FNCALL_STOP_WORDS,
+                    max_tokens=4096,
                 )
+                # response = litellm.completion(
+                #     model=model_name,
+                #     temperature=temp, top_p=0.8, repetition_penalty=1.05,
+                #     messages=messages,
+                #     stop=NON_FNCALL_STOP_WORDS
+                # )
             elif tools:
                 # 支持的则通过 tools 参数传入函数定义，标准 OpenAI/Claude 风格
-                response = litellm.completion(
+                response = llm_client.chat.completions.create(
                     model=model_name,
                     tools=tools,
-                    messages=messages,
                     temperature=temp,
-                    # stop=['</execute_ipython>'], #</finish>',
+                    messages=messages,
                 )
+                # response = litellm.completion(
+                #     model=model_name,
+                #     tools=tools,
+                #     messages=messages,
+                #     temperature=temp,
+                #     # stop=['</execute_ipython>'], #</finish>',
+                # )
             else:
                 # 无工具的则直接调用
-                response = litellm.completion(
+                response = llm_client.chat.completions.create(
                     model=model_name,
-                    messages=messages,
                     temperature=temp,
-                    stop=['</execute_ipython>'],  # </finish>',
+                    messages=messages,
+                    stop=['</execute_ipython>'],
                 )
+                # response = litellm.completion(
+                #     model=model_name,
+                #     messages=messages,
+                #     temperature=temp,
+                #     stop=['</execute_ipython>'],  # </finish>',
+                # )
         except litellm.BadRequestError as e:
             # If there's an error, send the error info back to the parent process
             result_queue.put({'error': str(e), 'type': 'BadRequestError'})
+            return
+        except Exception as e:
+            result_queue.put({'error': str(e), 'type': 'Exception'})
             return
 
         # 防止模型卡在 loop 中重复回答，通过追加 user 提示打断。
@@ -451,6 +481,9 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                     if isinstance(result, dict) and 'error' in result and result['type'] == 'BadRequestError':
                         raise litellm.BadRequestError(result['error'], args.model, args.model.split('/')[0])
                         # print(f"Error occurred in subprocess: {result['error']}")
+                    elif isinstance(result, dict) and 'error' in result and result['type'] == 'Exception':
+                        raise Exception(f"Error occurred in subprocess, model: {args.model}, err: {result['error']}")
+                        # print(f"Error occurred in subprocess: {result['error']}")
                     else:
                         loc_result, messages, traj_data = result
 
@@ -467,6 +500,10 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                     continue
                 except litellm.exceptions.ContextWindowExceededError as e:
                     logger.warning(f'{e}. Try again.')
+                    max_attempt_num = max_attempt_num - 1
+                    continue
+                except Exception as e:
+                    logger.error(f'{e}. Try again.')
                     max_attempt_num = max_attempt_num - 1
                     continue
 
@@ -660,7 +697,7 @@ def main():
     parser.add_argument(
         "--model", type=str,
         default="openai/gpt-4o-2024-05-13",
-        choices=["gpt-4o","huggingface/together/deepseek-ai/DeepSeek-R1",
+        choices=["gpt-4o", "bd/gpt-4o-2024-05-13",
                  "azure/gpt-4o", "openai/gpt-4o-2024-05-13",
                  "deepseek/deepseek-chat", "deepseek-ai/DeepSeek-R1",
                  "litellm_proxy/claude-3-5-sonnet-20241022", "litellm_proxy/gpt-4o-2024-05-13",
@@ -687,6 +724,9 @@ def main():
 
     args.output_file = os.path.join(args.output_folder, args.output_file)
     os.makedirs(args.output_folder, exist_ok=True)
+
+    if args.model.startswith("bd/"):
+        args.model = args.model.replace("bd/", "")
 
     # write the arguments
     with open(f"{args.output_folder}/args.json", "w") as f:
