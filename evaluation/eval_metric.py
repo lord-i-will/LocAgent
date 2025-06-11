@@ -10,34 +10,35 @@ from datasets import load_dataset
 import collections
 import re
 
-filtered_instances=['pytest-dev__pytest-5227',
- 'sympy__sympy-15345',
- 'sympy__sympy-21614',
- 'scikit-learn__scikit-learn-13439',
- 'sympy__sympy-11400',
- 'sympy__sympy-19487',
- 'sympy__sympy-15308',
- 'django__django-12915',
- 'sympy__sympy-20590',
- 'sympy__sympy-17022',
- 'django__django-11099',
- 'django__django-13220',
- 'django__django-11964',
- 'matplotlib__matplotlib-25332',
- 'django__django-10914',
- 'django__django-14915',
- 'django__django-11049',
- 'django__django-11564',
- 'sympy__sympy-17655',
- 'sympy__sympy-16106',
- 'sympy__sympy-12171',
- 'django__django-15400',
- 'django__django-14411',
- 'sympy__sympy-21055',
- 'django__django-15213',
- 'django__django-15902',
- 
- ]
+filtered_instances = ['pytest-dev__pytest-5227',
+                      'sympy__sympy-15345',
+                      'sympy__sympy-21614',
+                      'scikit-learn__scikit-learn-13439',
+                      'sympy__sympy-11400',
+                      'sympy__sympy-19487',
+                      'sympy__sympy-15308',
+                      'django__django-12915',
+                      'sympy__sympy-20590',
+                      'sympy__sympy-17022',
+                      'django__django-11099',
+                      'django__django-13220',
+                      'django__django-11964',
+                      'matplotlib__matplotlib-25332',
+                      'django__django-10914',
+                      'django__django-14915',
+                      'django__django-11049',
+                      'django__django-11564',
+                      'sympy__sympy-17655',
+                      'sympy__sympy-16106',
+                      'sympy__sympy-12171',
+                      'django__django-15400',
+                      'django__django-14411',
+                      'sympy__sympy-21055',
+                      'django__django-15213',
+                      'django__django-15902',
+
+                      ]
+
 
 def _dcg(target: Tensor) -> Tensor:
     batch_size, k = target.shape
@@ -66,12 +67,12 @@ def recall_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = No
 def acc_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
     pred_target = pred_target[:, :k]  # 只考虑前 k 个预测结果
     ideal_target = ideal_target[:, :k]
-    
+
     relevant = (pred_target == 1).sum(dim=-1)  # 计算预测中相关文档的个数
     total_relevant = (ideal_target == 1).sum(dim=-1)  # 计算所有相关文档的个数
 
     comparison = relevant == total_relevant
-    return comparison.sum()/relevant.shape[0]
+    return comparison.sum() / relevant.shape[0]
 
 
 def precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
@@ -85,7 +86,7 @@ def average_precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optiona
     batch_size, k_val = pred_target.shape
     pred_target = pred_target[:, :k]  # 只考虑前 k 个预测结果
     ideal_target = ideal_target[:, :k]
-    
+
     precisions = []
     for i in range(batch_size):
         ap = 0.0
@@ -95,16 +96,16 @@ def average_precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optiona
                 relevant_count += 1
                 ap += relevant_count / (j + 1)  # 计算 Precision@j
         # if relevant_count > 0:
-        ap = ap/k
+        ap = ap / k
         precisions.append(ap)
-    
+
     return torch.tensor(precisions).mean()
 
 
 def load_gt_dict(gt_file, level):
     gt_datas = load_jsonl(gt_file)
     # gt_data = [data for data in gt_datas if data['instance_id']==instance_id][0]
-    
+
     gt_dict = {}
     for gt_data in gt_datas:
         gt_locs = []
@@ -137,13 +138,14 @@ def extract_file_path(changed_funcs):
                     changed_files.append(match.group(1))
                     seen_files.add(changed_files[-1])
             else:
-                import pdb;pdb.set_trace()  
+                import pdb;
+                pdb.set_trace()
         changed_funcs[k] = changed_files
-    
+
     return changed_funcs
 
 
-def convert_solutions_dict(dataset, key = 'model_patch'):
+def convert_solutions_dict(dataset, key='model_patch'):
     return {elem['instance_id']: elem[key] for elem in dataset}
 
 
@@ -164,15 +166,15 @@ METRIC_NAME = {
 
 
 def cal_metrics_w_file(gt_file, loc_file, key,
-                level,
-                k_values, # < 100
-                metrics=['acc', 'ndcg', 'precision', 'recall', 'map'],
-                filter_list=filtered_instances,
-                selected_list=None,
-                # merge_init = True,
-                ):
+                       level,
+                       k_values,  # < 100
+                       metrics=['acc', 'ndcg', 'precision', 'recall', 'map'],
+                       filter_list=filtered_instances,
+                       selected_list=None,
+                       # merge_init = True,
+                       ):
     assert key in ['found_files', 'found_modules', 'found_entities', 'docs']
-    
+
     max_k = max(k_values)
     # loc_output = load_jsonl(loc_file)
     gt_dict = load_gt_dict(gt_file, level)
@@ -187,7 +189,7 @@ def cal_metrics_w_file(gt_file, loc_file, key,
                 fle, func_n = pl.split('.py/')
                 if level == 'function':
                     if func_n.endswith('.__init__'):
-                        func_n = func_n[:(len(func_n)-len('.__init__'))]
+                        func_n = func_n[:(len(func_n) - len('.__init__'))]
                     pred_funcs[i] = f"{fle}.py:{func_n.strip('/').replace('/', '.')}"
                 elif level == 'module':
                     module_name = f'{fle}.py:{func_n.strip("/").split("/")[0]}'
@@ -202,53 +204,53 @@ def cal_metrics_w_file(gt_file, loc_file, key,
             for i, pf in enumerate(pred_funcs):
                 if level == 'function':
                     if pf.endswith('.__init__'):
-                        pf = pf[:(len(pf)-len('.__init__'))]
+                        pf = pf[:(len(pf) - len('.__init__'))]
                     if pf not in pred_modules:
                         pred_modules.append(pf)
             pred_dict[ins] = pred_modules
-        
+
     _gt_labels = []
     _pred_labels = []
-    
+
     # for loc in loc_output:
     for instance_id in gt_dict.keys():
         # instance_id = loc['instance_id']
-        if filter_list and instance_id in filter_list: continue # filter
+        if filter_list and instance_id in filter_list: continue  # filter
         if selected_list and instance_id not in selected_list: continue
         if not gt_dict[instance_id]: continue
-        
+
         if instance_id not in pred_dict:
             pred_locs = []
         else:
             pred_locs = pred_dict[instance_id][: max_k]
-                
+
         gt_labels = [0 for _ in range(max_k)]
         pred_labels = [0 for _ in range(max_k)]
 
         for i in range(len(gt_dict[instance_id])):
             if i < max_k:
                 gt_labels[i] = 1
-        
+
         for i, l in enumerate(pred_locs):
             if l in gt_dict[instance_id]:
                 pred_labels[i] = 1
-                
+
         _gt_labels.append(gt_labels)
         _pred_labels.append(pred_labels)
-    
+
     _pred_target = torch.tensor(_pred_labels)
     _ideal_target = torch.tensor(_gt_labels)
-    
+
     result = {}
     for metric in metrics:
         assert metric in METRIC_FUNC.keys()
-        
+
         metric_func = METRIC_FUNC[metric]
         name = METRIC_NAME[metric]
         for k in k_values:
             value = metric_func(_pred_target, _ideal_target, k=k)
             result[f'{name}@{k}'] = round(value.item(), 4)
-            
+
     return result
 
 
@@ -259,33 +261,33 @@ def eval_w_file(gt_file, loc_file, level2key_dict, selected_list=None, k_values_
             [5, 10],
             [5, 10]
         ]
-    file_res = cal_metrics_w_file(gt_file, loc_file, 
-                            level2key_dict['file'], level='file', k_values=k_values_list[0],
-                            selected_list=selected_list)
-    module_res = cal_metrics_w_file(gt_file, loc_file, 
-                            level2key_dict['module'], level='module', k_values=k_values_list[1],
-                            selected_list=selected_list)
-    function_res = cal_metrics_w_file(gt_file, loc_file, 
-                            level2key_dict['function'], level='function', k_values=k_values_list[2],
-                            selected_list=selected_list)
+    file_res = cal_metrics_w_file(gt_file, loc_file,
+                                  level2key_dict['file'], level='file', k_values=k_values_list[0],
+                                  selected_list=selected_list)
+    module_res = cal_metrics_w_file(gt_file, loc_file,
+                                    level2key_dict['module'], level='module', k_values=k_values_list[1],
+                                    selected_list=selected_list)
+    function_res = cal_metrics_w_file(gt_file, loc_file,
+                                      level2key_dict['function'], level='function', k_values=k_values_list[2],
+                                      selected_list=selected_list)
 
     all_df = pd.concat([pd.DataFrame(res, index=[0])
-                          for res in [file_res, module_res, function_res]], 
-                        axis=1, 
-                        keys=['file', 'module', 'function'])
+                        for res in [file_res, module_res, function_res]],
+                       axis=1,
+                       keys=['file', 'module', 'function'])
     return all_df
 
 
 def cal_metrics_w_dataset(loc_file, key,
-                eval_level,
-                dataset, split, 
-                k_values,
-                metrics,
-                selected_list=None,
-                ):
+                          eval_level,
+                          dataset, split,
+                          k_values,
+                          metrics,
+                          selected_list=None,
+                          ):
     assert key in ['found_files', 'found_modules', 'found_entities', 'docs']
     max_k = max(k_values)
-    
+
     # load localization labels
     bench_data = load_dataset(dataset, split=split)
     gt_dict = collections.defaultdict(list)
@@ -307,12 +309,12 @@ def cal_metrics_w_dataset(loc_file, key,
                 fn = func.split(':')[0]
                 mname = func.split(':')[-1]
                 if mname.endswith('.__init__'):
-                    mname = mname[:(len(mname)-len('.__init__'))]
+                    mname = mname[:(len(mname) - len('.__init__'))]
                 mid = f'{fn}:{mname}'
                 if mid not in gt_dict[instance['instance_id']]:
                     gt_dict[instance['instance_id']].append(mid)
             # gt_dict[instance['instance_id']].extend(instance['edit_functions'])
-    
+
     # load predicted localization results
     if key == 'docs' and eval_level == 'file':
         pred_dict = extract_file_path(convert_solutions_dict(load_jsonl(loc_file), key='docs'))
@@ -325,7 +327,7 @@ def cal_metrics_w_dataset(loc_file, key,
                 fle, func_n = pl.split('.py/')
                 if eval_level == 'function':
                     if func_n.endswith('.__init__'):
-                        func_n = func_n[:(len(func_n)-len('.__init__'))]
+                        func_n = func_n[:(len(func_n) - len('.__init__'))]
                     pred_funcs[i] = f'{fle}.py:{func_n.strip("/").replace("/", ".")}'
                 elif eval_level == 'module':
                     module_name = f'{fle}.py:{func_n.strip("/").split("/")[0]}'
@@ -334,76 +336,94 @@ def cal_metrics_w_dataset(loc_file, key,
                     pred_dict[ins] = pred_modules
     else:
         pred_dict = convert_solutions_dict(load_jsonl(loc_file), key=key)
-            
-        
+
     _gt_labels = []
     _pred_labels = []
-    
+
     for instance_id in gt_dict.keys():
         if selected_list and instance_id not in selected_list: continue
         if not gt_dict[instance_id]: continue
-        
+
         if instance_id not in pred_dict:
             pred_locs = []
         else:
             pred_locs = pred_dict[instance_id][: max_k]
-                
+
         gt_labels = [0 for _ in range(max_k)]
         pred_labels = [0 for _ in range(max_k)]
 
         for i in range(len(gt_dict[instance_id])):
             if i < max_k:
                 gt_labels[i] = 1
-        
+
         for i, l in enumerate(pred_locs):
             if l in gt_dict[instance_id]:
                 pred_labels[i] = 1
-                
+
         _gt_labels.append(gt_labels)
         _pred_labels.append(pred_labels)
-    
+
     _pred_target = torch.tensor(_pred_labels)
     _ideal_target = torch.tensor(_gt_labels)
-    
+
     result = {}
     for metric in metrics:
         assert metric in METRIC_FUNC.keys()
-        
+
         metric_func = METRIC_FUNC[metric]
         name = METRIC_NAME[metric]
         for k in k_values:
             value = metric_func(_pred_target, _ideal_target, k=k)
             result[f'{name}@{k}'] = round(value.item(), 4)
-            
+
     return result
 
 
-def evaluate_results(loc_file, level2key_dict, 
-                     dataset='czlll/SWE-bench_Lite', split='test', 
+def evaluate_results(loc_file, level2key_dict,
+                     dataset='czlll/SWE-bench_Lite', split='test',
                      selected_list=None,
-                     metrics=['acc', 'ndcg', 'precision', 'recall', 'map'], 
+                     metrics=['acc', 'ndcg', 'precision', 'recall', 'map'],
                      k_values_list=None):
+    """
+    评估在不同代码层级（文件/模块/函数）的搜索或定位准确度，通过不同指标（准确率、NDCG等）量化定位质量。
+
+    Args:
+        loc_file (str): 包含预测结果的文件路径（如 .jsonl 格式）。
+        level2key_dict (dict): 指定各层级在结果文件中对应的字段名
+        dataset (str, optional): 使用的基准数据集（loc_file结果会和基准数据集进行diff对比），默认为 'czlll/SWE-bench_Lite'。
+        split (str, optional): 数据集划分，默认为 'test'。
+        selected_list (list, optional): 可指定只评估部分样本。
+        metrics (list, optional): 评估指标。默认为5种都评估：['acc','ndcg','precision','recall','map']。
+        k_values_list (list, optional): 每个指标的 k 值列表。
+
+    Returns:
+        pd.DataFrame: 包含评估结果的 DataFrame 表格。
+    """
     if not k_values_list:
         k_values_list = [
-            [1, 3, 5],
+            [1, 3, 5],  # 文件级评估的k值，更严格
             [5, 10],
             [5, 10]
         ]
-    file_res = cal_metrics_w_dataset(loc_file, level2key_dict['file'], 'file', dataset, split, 
-                            metrics=metrics,
-                            k_values=k_values_list[0],
-                            selected_list=selected_list)
-    module_res = cal_metrics_w_dataset(loc_file, level2key_dict['module'], 'module', dataset, split, 
-                            metrics=metrics,
-                            k_values=k_values_list[1],
-                            selected_list=selected_list)
-    function_res = cal_metrics_w_dataset(loc_file, level2key_dict['function'], 'function', dataset, split, 
-                            metrics=metrics,
-                            k_values=k_values_list[2],
-                            selected_list=selected_list)
+    file_res = cal_metrics_w_dataset(loc_file, level2key_dict['file'], 'file', dataset, split,
+                                     metrics=metrics,
+                                     k_values=k_values_list[0],
+                                     selected_list=selected_list)
+    module_res = cal_metrics_w_dataset(loc_file, level2key_dict['module'], 'module', dataset, split,
+                                       metrics=metrics,
+                                       k_values=k_values_list[1],
+                                       selected_list=selected_list)
+    function_res = cal_metrics_w_dataset(loc_file, level2key_dict['function'], 'function', dataset, split,
+                                         metrics=metrics,
+                                         k_values=k_values_list[2],
+                                         selected_list=selected_list)
 
+    # 输出示例：
+    #         file                     module                  function
+    #      acc ndcg@1 ndcg@3 ndcg@5   acc ndcg@5 ndcg@10     acc ndcg@5 ndcg@10
+    # 0   0.85  0.92   0.89   0.86   0.78  0.81    0.79     0.65  0.72    0.68
     all_df = pd.concat([pd.DataFrame(res, index=[0])
-                          for res in [file_res, module_res, function_res]], 
-                        axis=1, 
-                        keys=['file', 'module', 'function'])
+                        for res in [file_res, module_res, function_res]],
+                       axis=1,
+                       keys=['file', 'module', 'function'])
     return all_df
