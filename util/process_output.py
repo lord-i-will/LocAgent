@@ -120,10 +120,13 @@ def extract_python_file_path(line, valid_folders):
     match = re.search(pattern, line)
 
     if match:
+        # src/xxx.py or a.py(项目根目录下)
         matched_fp = match.group(0)
         start_index = len(matched_fp)
         for folder in valid_folders:
-            if f'{folder}/' in matched_fp:
+            if folder == matched_fp:
+                return matched_fp
+            elif f'{folder}/' in matched_fp:
                 cur_start_index = matched_fp.index(f'{folder}/')
                 if cur_start_index < start_index:
                     start_index = cur_start_index

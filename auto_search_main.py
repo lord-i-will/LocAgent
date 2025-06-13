@@ -10,7 +10,7 @@ from queue import Empty
 from typing import List
 from tqdm import tqdm
 from copy import deepcopy
-from datasets import load_dataset
+from datasets import load_dataset, Split, Dataset
 
 from util.runtime.execute_ipython import execute_ipython
 from util.runtime import function_calling
@@ -578,11 +578,14 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
 
 
 def localize(args):
-    # 从 Hugging Face 加载一个指定的数据集，并选择其中的一个子集（split）
-    if args.eval_n_limit > 0:
-        bench_data = load_dataset(args.dataset, split=f"{args.split}[:{args.eval_n_limit}]")
+    if args.local_dataset:
+        bench_data = Dataset.from_json(args.local_dataset, split=Split.TEST)
     else:
-        bench_data = load_dataset(args.dataset, split=args.split)
+        # 从 Hugging Face 加载一个指定的数据集，并选择其中的一个子集（split）
+        if args.eval_n_limit > 0:
+            bench_data = load_dataset(args.dataset, split=f"{args.split}[:{args.eval_n_limit}]")
+        else:
+            bench_data = load_dataset(args.dataset, split=args.split)
     bench_tests = filter_dataset(bench_data, 'instance_id', args.used_list)
     if args.eval_n_limit:
         eval_n_limit = min(args.eval_n_limit, len(bench_tests))
@@ -689,6 +692,8 @@ def main():
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--eval_n_limit", type=int, default=0)
     parser.add_argument("--used_list", type=str, default='selected_ids')
+
+    parser.add_argument("--local_dataset", type=str, default="dataset/dataset_test.json")
 
     parser.add_argument("--output_folder", type=str, required=True)
     parser.add_argument("--output_file", type=str, default="loc_outputs.jsonl")

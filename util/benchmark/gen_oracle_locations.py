@@ -328,15 +328,15 @@ def extract_module_from_patch(instance, repo_dir, max_edit_file_num=1,
                     continue
                 if mode in ['added_modules', 'edited_modules']:
                     _mode = mode.replace('_modules', '_entities')
-                    _changes[_mode].append(f'{file}:{c.split(':')[-1].strip()}')
+                    _changes[_mode].append(f'{file}:{c.split(":")[-1].strip()}')
                 
                 if c.startswith("function:") and '.' in c:
                     _c = c.split(':')[-1].strip().split('.')[0]
                     if f'{file}:{_c.strip()}' not in _changes[mode]:
                         _changes[mode].append(f'{file}:{_c.strip()}')
                 else:
-                    if f'{file}:{c.split(':')[-1].strip()}' not in _changes[mode]:
-                        _changes[mode].append(f'{file}:{c.split(':')[-1].strip()}')
+                    if f'{file}:{c.split(":")[-1].strip()}' not in _changes[mode]:
+                        _changes[mode].append(f'{file}:{c.split(":")[-1].strip()}')
         
         updated_file_changes.append({
             'file': file,

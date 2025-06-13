@@ -1,0 +1,13 @@
+[
+  {
+    "repo": "pdi-qa/product_tree_data_cleaning",
+    "instance_id": "pdi-qa__product_tree_data_cleaning-1",
+    "base_commit": "60d74556dae217be2dedaf25747dd57d0fdfb0e8",
+    "patch": "",
+    "problem_statement": "when pay, the maximum payment amount should <= 9000",
+    "edit_functions": [
+      "bug_gen.py:pay"
+    ],
+    "edit_functions_length": 1
+  }
+]

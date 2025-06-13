@@ -6,7 +6,7 @@ from util.utils import load_jsonl
 from typing import Optional
 from torch import Tensor
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, Dataset, Split
 import collections
 import re
 
@@ -68,10 +68,17 @@ def acc_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None)
     pred_target = pred_target[:, :k]  # 只考虑前 k 个预测结果
     ideal_target = ideal_target[:, :k]
 
+    # 统计每个样本的预测结果中，标记为1的数量（即模型认为正确的预测数）
+    # 若某样本的 pred_target = [1, 0, 1]，则 relevant = 2
     relevant = (pred_target == 1).sum(dim=-1)  # 计算预测中相关文档的个数
+    # 统计每个样本的真实结果中，标记为1的数量（即实际正确的总数）
+    # 若某样本的 ideal_target = [1, 1, 0]，则 total_relevant = 2
     total_relevant = (ideal_target == 1).sum(dim=-1)  # 计算所有相关文档的个数
 
+    # 仅当 预测的正确数量 = 真实正确数量 时，才认为该样本预测准确
     comparison = relevant == total_relevant
+    # 正确样本数 / 总样本数
+    # 若有100个样本，其中80个满足 relevant == total_relevant，则 acc@k = 0.8
     return comparison.sum() / relevant.shape[0]
 
 
@@ -146,6 +153,13 @@ def extract_file_path(changed_funcs):
 
 
 def convert_solutions_dict(dataset, key='model_patch'):
+    """
+    处理dataset中的每个instance样本，转换成dict中的一个元素，key是instance[instance_id]，value是instance[key]。
+
+    Returns:
+         dict: key: instance[instance_id], value: instance[key].
+            比如：instance[instance_id]是UXARRAY__uxarray-1117，key是found_files，则返回{"UXARRAY__uxarray-1117": ["uxarray/grid/coordinates.py"]}
+    """
     return {elem['instance_id']: elem[key] for elem in dataset}
 
 
@@ -278,8 +292,60 @@ def eval_w_file(gt_file, loc_file, level2key_dict, selected_list=None, k_values_
     return all_df
 
 
+def evaluate_results(loc_file, level2key_dict, local_dataset,
+                     dataset='czlll/SWE-bench_Lite', split='test',
+                     selected_list=None,
+                     metrics=['acc', 'ndcg', 'precision', 'recall', 'map'],
+                     k_values_list=None):
+    """
+    评估在不同代码层级（文件/模块/函数）的搜索或定位准确度，通过不同指标（准确率、NDCG等）量化定位质量。
+
+    Args:
+        loc_file (str): 包含预测结果的文件路径（如 .jsonl 格式）。
+        level2key_dict (dict): 指定各层级在结果文件中对应的字段名
+        local_dataset (str, optional): 本地数据集文件路径，用于替代从 Hugging Face 加载数据集。
+        dataset (str, optional): 使用的基准数据集（loc_file结果会和基准数据集进行diff对比），默认为 'czlll/SWE-bench_Lite'。
+        split (str, optional): 数据集划分，默认为 'test'。
+        selected_list (list, optional): 可指定只评估部分样本。
+        metrics (list, optional): 评估指标。默认为5种都评估：['acc','ndcg','precision','recall','map']。
+        k_values_list (list, optional): 每个指标的 k 值列表。
+
+    Returns:
+        pd.DataFrame: 包含评估结果的 DataFrame 表格。
+    """
+    if not k_values_list:
+        k_values_list = [
+            [1, 3, 5],  # 文件级评估的k值，更严格
+            [5, 10],
+            [5, 10]
+        ]
+    file_res = cal_metrics_w_dataset(loc_file, level2key_dict['file'], 'file', local_dataset, dataset, split,
+                                     metrics=metrics,
+                                     k_values=k_values_list[0],
+                                     selected_list=selected_list)
+    module_res = cal_metrics_w_dataset(loc_file, level2key_dict['module'], 'module', local_dataset, dataset, split,
+                                       metrics=metrics,
+                                       k_values=k_values_list[1],
+                                       selected_list=selected_list)
+    function_res = cal_metrics_w_dataset(loc_file, level2key_dict['function'], 'function', local_dataset, dataset, split,
+                                         metrics=metrics,
+                                         k_values=k_values_list[2],
+                                         selected_list=selected_list)
+
+    # 输出示例：
+    #         file                     module                  function
+    #      acc ndcg@1 ndcg@3 ndcg@5   acc ndcg@5 ndcg@10     acc ndcg@5 ndcg@10
+    # 0   0.85  0.92   0.89   0.86   0.78  0.81    0.79     0.65  0.72    0.68
+    all_df = pd.concat([pd.DataFrame(res, index=[0])
+                        for res in [file_res, module_res, function_res]],
+                       axis=1,
+                       keys=['file', 'module', 'function'])
+    return all_df
+
+
 def cal_metrics_w_dataset(loc_file, key,
                           eval_level,
+                          local_dataset,
                           dataset, split,
                           k_values,
                           metrics,
@@ -289,7 +355,10 @@ def cal_metrics_w_dataset(loc_file, key,
     max_k = max(k_values)
 
     # load localization labels
-    bench_data = load_dataset(dataset, split=split)
+    if local_dataset:
+        bench_data = Dataset.from_json(local_dataset, split=Split.TEST)
+    else:
+        bench_data = load_dataset(dataset, split=split)
     gt_dict = collections.defaultdict(list)
     for instance in bench_data:
         if eval_level == 'file':
@@ -337,29 +406,48 @@ def cal_metrics_w_dataset(loc_file, key,
     else:
         pred_dict = convert_solutions_dict(load_jsonl(loc_file), key=key)
 
-    _gt_labels = []
-    _pred_labels = []
+    # 评估矩阵生成
+    # 这两个列表将收集每个评估实例（instance_id）的二进制标签序列（list[int]），用于后续批量计算指标。
+    _gt_labels = []  # 存储所有样本的真实标签矩阵
+    _pred_labels = []  # 存储所有样本的预测标签矩阵
 
     for instance_id in gt_dict.keys():
+        # 过滤不在选定列表中的样本
         if selected_list and instance_id not in selected_list: continue
         if not gt_dict[instance_id]: continue
 
         if instance_id not in pred_dict:
+            # 无预测结果时设为空列表
             pred_locs = []
         else:
+            # 截取前max_k个预测
             pred_locs = pred_dict[instance_id][: max_k]
 
-        gt_labels = [0 for _ in range(max_k)]
-        pred_labels = [0 for _ in range(max_k)]
+        # gt_labels = [1, 1, 0, 0, 0]  # 前2个位置是真实结果
+        # pred_labels = [0, 1, 0, 1, 0]  # 模型预测结果（max_k=5）
+        gt_labels = [0 for _ in range(max_k)]  # 真实标签向量，初始化为[0, 0, 0, 0, 0]
+        pred_labels = [0 for _ in range(max_k)]  # 预测标签向量，初始化为[0, 0, 0, 0, 0]
 
         for i in range(len(gt_dict[instance_id])):
             if i < max_k:
+                # 前n个位置标记为1（n=真实结果数量）
+                # 示例：若真实结果有3个（如['a.py', 'b.py', 'c.py']），且max_k=5
+                # gt_labels = [1, 1, 1, 0, 0]  # 前3位为1
                 gt_labels[i] = 1
 
         for i, l in enumerate(pred_locs):
+            # 检查预测项是否在真实结果中
             if l in gt_dict[instance_id]:
+                # 命中则标记为1
+                # 假设：
+                # 真实结果：['a.py', 'b.py', 'c.py']
+                # 预测结果：['x.py', 'b.py', 'a.py', 'y.py']（max_k=5）
+                # 处理后：pred_labels = [0, 1, 1, 0, 0]  # 第2/3项命中
                 pred_labels[i] = 1
 
+        # 批量处理优势：最终得到两个矩阵
+        # _gt_labels: [样本1的真实标签向量, 样本2的真实标签向量,...]
+        # _pred_labels: [样本1的预测标签向量, 样本2的预测标签向量,...]
         _gt_labels.append(gt_labels)
         _pred_labels.append(pred_labels)
 
@@ -377,53 +465,3 @@ def cal_metrics_w_dataset(loc_file, key,
             result[f'{name}@{k}'] = round(value.item(), 4)
 
     return result
-
-
-def evaluate_results(loc_file, level2key_dict,
-                     dataset='czlll/SWE-bench_Lite', split='test',
-                     selected_list=None,
-                     metrics=['acc', 'ndcg', 'precision', 'recall', 'map'],
-                     k_values_list=None):
-    """
-    评估在不同代码层级（文件/模块/函数）的搜索或定位准确度，通过不同指标（准确率、NDCG等）量化定位质量。
-
-    Args:
-        loc_file (str): 包含预测结果的文件路径（如 .jsonl 格式）。
-        level2key_dict (dict): 指定各层级在结果文件中对应的字段名
-        dataset (str, optional): 使用的基准数据集（loc_file结果会和基准数据集进行diff对比），默认为 'czlll/SWE-bench_Lite'。
-        split (str, optional): 数据集划分，默认为 'test'。
-        selected_list (list, optional): 可指定只评估部分样本。
-        metrics (list, optional): 评估指标。默认为5种都评估：['acc','ndcg','precision','recall','map']。
-        k_values_list (list, optional): 每个指标的 k 值列表。
-
-    Returns:
-        pd.DataFrame: 包含评估结果的 DataFrame 表格。
-    """
-    if not k_values_list:
-        k_values_list = [
-            [1, 3, 5],  # 文件级评估的k值，更严格
-            [5, 10],
-            [5, 10]
-        ]
-    file_res = cal_metrics_w_dataset(loc_file, level2key_dict['file'], 'file', dataset, split,
-                                     metrics=metrics,
-                                     k_values=k_values_list[0],
-                                     selected_list=selected_list)
-    module_res = cal_metrics_w_dataset(loc_file, level2key_dict['module'], 'module', dataset, split,
-                                       metrics=metrics,
-                                       k_values=k_values_list[1],
-                                       selected_list=selected_list)
-    function_res = cal_metrics_w_dataset(loc_file, level2key_dict['function'], 'function', dataset, split,
-                                         metrics=metrics,
-                                         k_values=k_values_list[2],
-                                         selected_list=selected_list)
-
-    # 输出示例：
-    #         file                     module                  function
-    #      acc ndcg@1 ndcg@3 ndcg@5   acc ndcg@5 ndcg@10     acc ndcg@5 ndcg@10
-    # 0   0.85  0.92   0.89   0.86   0.78  0.81    0.79     0.65  0.72    0.68
-    all_df = pd.concat([pd.DataFrame(res, index=[0])
-                        for res in [file_res, module_res, function_res]],
-                       axis=1,
-                       keys=['file', 'module', 'function'])
-    return all_df

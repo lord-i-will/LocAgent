@@ -156,8 +156,8 @@ def visualize_with_filters(graph: nx.MultiDiGraph, output_html="filtered_graph.h
 def main():
     index_data_dir = "index_data/Loc-Bench_V1/graph_index_v2.3"
     # 替换为你的文件名
-    graph_path = f"{index_data_dir}/avantifellows__quiz-backend-84.pkl"
-    output_file = f"{index_data_dir}/avantifellows__quiz-backend-84.html"
+    graph_path = f"{index_data_dir}/product_tree_data_cleaning.pkl"
+    output_file = f"{index_data_dir}/product_tree_data_cleaning.html"
 
     print("Loading graph...")
     graph = load_graph(graph_path)
