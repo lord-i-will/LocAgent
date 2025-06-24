@@ -1,0 +1,35 @@
+[
+  {
+    "repo": "pdi-qa/product_tree_data_cleaning",
+    "instance_id": "pdi-qa__product_tree_data_cleaning-1",
+    "base_commit": "60d74556dae217be2dedaf25747dd57d0fdfb0e8",
+    "patch": "",
+    "problem_statement": "when pay, the maximum payment amount should <= 9000",
+    "edit_functions": [
+      "bug_gen.py:pay"
+    ],
+    "edit_functions_length": 1
+  },
+  {
+    "repo": "pdi-qa/product_tree_data_cleaning",
+    "instance_id": "pdi-qa__product_tree_data_cleaning-2",
+    "base_commit": "60d74556dae217be2dedaf25747dd57d0fdfb0e8",
+    "patch": "",
+    "problem_statement": "Excel生成，新增'业务确认'tab页",
+    "edit_functions": [
+      "gen_final_excel.py:gen_api_excel"
+    ],
+    "edit_functions_length": 1
+  },
+  {
+    "repo": "pdi-qa/product_tree_data_cleaning",
+    "instance_id": "pdi-qa__product_tree_data_cleaning-3",
+    "base_commit": "60d74556dae217be2dedaf25747dd57d0fdfb0e8",
+    "patch": "",
+    "problem_statement": "模型需要使用豆包|The model needs to use Doubao",
+    "edit_functions": [
+      "api_ai_by_gpt_v2.py:ComponentAI"
+    ],
+    "edit_functions_length": 1
+  }
+]

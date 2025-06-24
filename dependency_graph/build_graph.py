@@ -5,8 +5,8 @@ import re
 from collections import Counter, defaultdict
 from typing import List
 
-import networkx as nx
 import matplotlib.pyplot as plt
+import networkx as nx
 from matplotlib.lines import Line2D
 
 VERSION = 'v2.3'
@@ -74,12 +74,16 @@ def find_imports(filepath, repo_path, tree=None):
     解析给定的 Python 源代码字符串，提取其中的导入模块。
 
     Args:
-        filepath: Python 文件路径。
-        repo_path: 代码仓库的根目录。
+        filepath: Python 文件绝对路径，例如/home/code/pdi-qa_product_tree_data_cleaning/bam/merge_bam.py
+        repo_path: 要分析的代码仓库根目录路径，例如/home/code/pdi-qa_product_tree_data_cleaning
         tree: 可选参数，表示已解析的抽象语法树（AST）。如果为 None，函数将从 filepath 中读取代码并解析为 AST。
 
     Returns:
-        List[dict]: imports列表，每个元素形如{"type": "import", "module": "networkx", "alias": nx}
+        List[dict]: imports列表，每个dict有如下几种类型：
+            {"type":"import", "module":"networkx", "alias":"nx"}
+            {"type":"from", "module":"retry", "entities":[{"name":"retry_func", "alias":None}]}
+            {"type":"from", "module":"errno", "entities":[{"name":"*", "alias":None}]}
+            {"type":"from", "module":"collections", "entities":[{"name":"Counter", "alias":"cnt"},{"name":"defaultdict", "alias":None}]}
 
     Examples:
         >>> find_imports('xxx')
@@ -156,6 +160,18 @@ def find_imports(filepath, repo_path, tree=None):
 
 
 class CodeAnalyzer(ast.NodeVisitor):
+    """
+    继承自 ast.NodeVisitor，ast.NodeVisitor 是 Python ast 模块里的一个类，用于遍历 Python 代码的抽象语法树（AST）。
+    CodeAnalyzer 类的主要功能是遍历 AST 并提取类定义、函数定义相关信息。
+    Attributes:
+        filename (str): Python 文件绝对路径，比如 /home/code/pdi-qa_product_tree_data_cleaning/merge_bam.py
+        nodes (list[dict]): 存储提取到的类定义和函数定义信息的列表。dict结构如下：{'code': 'class AKSK(object):xxx', 'start_line': 17, 'end_line': 36, 'name': 'AKSK', 'type': 'class'}、
+            {'code': 'def new_token(self, uname: str):xxx', 'start_line': 23, 'end_line': 25, 'name': 'AKSK.new_token', 'parent_type': 'class', 'type': 'function'}
+            注：区别于类方法定义，如果是普通函数定义，那么'parent_type': None
+        node_name_stack (list): 栈结构，存储当前遍历节点名，比如['AKSK']。在处理嵌套类或函数时，通过这个栈能拼接出完整的名称，比如AKSK类里面有个new_token方法，那么当遍历到方法节点是，方法节点的全名就是AKSK.new_token
+        node_type_stack (list): 同样是栈结构，存储当前遍历节点类型，比如['class']
+    """
+
     def __init__(self, filename):
         self.filename = filename
         self.nodes = []
@@ -163,8 +179,15 @@ class CodeAnalyzer(ast.NodeVisitor):
         self.node_type_stack = []
 
     def visit_ClassDef(self, node):
-        class_name = node.name
-        full_class_name = '.'.join(self.node_name_stack + [class_name])
+        """
+        当 ast.NodeVisitor 在遍历 AST 过程中遇到 ClassDef 节点（即类定义节点）时，会自动调用这个方法。
+        visit_ClassDef 和 visit_FunctionDef的调用顺序由源代码里类和函数定义的先后顺序决定：
+            1. 如果是类的话，一定会先调用 visit_ClassDef 再调用 visit_FunctionDef，因为类的方法定义一定在类定义之后。
+            2. 如果是函数的话，visit_ClassDef 和 visit_FunctionDef 的调用顺序是不确定的，因为函数定义可以在类定义之前，也可以在类定义之后。
+        """
+        class_name = node.name  # AKSK
+        full_class_name = '.'.join(
+            self.node_name_stack + [class_name])  # 也是AKSK，因为此时self.node_name_stack是空的，外层会处理成'merge_bam.py:AKSK'
         self.nodes.append({
             'name': full_class_name,
             'type': NODE_TYPE_CLASS,
@@ -173,9 +196,9 @@ class CodeAnalyzer(ast.NodeVisitor):
             'end_line': node.end_lineno,
         })
 
-        self.node_name_stack.append(class_name)
-        self.node_type_stack.append(NODE_TYPE_CLASS)
-        self.generic_visit(node)
+        self.node_name_stack.append(class_name)  # ['AKSK']
+        self.node_type_stack.append(NODE_TYPE_CLASS)  # ['class']
+        self.generic_visit(node)  # 递归遍历当前类节点的子节点，处理类内部的成员定义（如方法、嵌套类等）。
         self.node_name_stack.pop()
         self.node_type_stack.pop()
 
@@ -188,8 +211,8 @@ class CodeAnalyzer(ast.NodeVisitor):
         self._visit_func(node)
 
     def _visit_func(self, node):
-        function_name = node.name
-        full_function_name = '.'.join(self.node_name_stack + [function_name])
+        function_name = node.name # new_token
+        full_function_name = '.'.join(self.node_name_stack + [function_name])# AKSK.new_token
         self.nodes.append({
             'name': full_function_name,
             'parent_type': self.node_type_stack[-1] if self.node_type_stack else None,
@@ -213,6 +236,15 @@ class CodeAnalyzer(ast.NodeVisitor):
 
 # Parese the given file, use CodeAnalyzer to extract classes and helper functions from the file
 def analyze_file(filepath):
+    """
+    解析给定的 Python 源代码文件，提取其中的类和函数。
+    Args:
+        filepath: Python 文件绝对路径，比如 /home/code/pdi-qa_product_tree_data_cleaning/merge_bam.py
+    Returns:
+        nodes: list[dict], 存储提取到的类定义和函数定义信息的列表。dict结构如下：{'code': 'class AKSK(object):xxx', 'start_line': 17, 'end_line': 36, 'name': 'AKSK', 'type': 'class'}、
+            {'code': 'def new_token(self, uname: str):xxx', 'start_line': 23, 'end_line': 25, 'name': 'AKSK.new_token', 'parent_type': 'class', 'type': 'function'}
+            注：区别于类方法定义，如果是普通函数定义，那么'parent_type': None
+    """
     with open(filepath, 'r') as file:
         code = file.read()
         # code = handle_edge_cases(code)
@@ -247,6 +279,18 @@ def resolve_module(module_name, repo_path):
 
 
 def add_imports(root_node, imports, graph, repo_path):
+    """
+    将imports关系添加到graph中。
+    Args:
+        root_node (str): 文件相对路径(相对当前仓库)，bam/merge_bam.py
+        imports (list[dict]): imports列表，每个dict有如下几种类型：
+            {"type":"import", "module":"networkx", "alias":"nx"}
+            {"type":"from", "module":"retry", "entities":[{"name":"retry_func", "alias":None}]}
+            {"type":"from", "module":"errno", "entities":[{"name":"*", "alias":None}]}
+            {"type":"from", "module":"collections", "entities":[{"name":"Counter", "alias":"cnt"},{"name":"defaultdict", "alias":None}]}
+        graph (nx.DiGraph): The graph to add import edges to.
+        repo_path (str): 代码仓库根目录路径，例如/home/code/pdi-qa_product_tree_data_cleaning
+    """
     for imp in imports:
         if imp['type'] == 'import':
             # Handle 'import module' statements
@@ -325,7 +369,7 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
     遍历代码仓库下所有Python文件，构建依赖图，节点类型如下：directory, file, class, function
 
     Args:
-        repo_path(str):	要分析的代码仓库根目录路径，例如/home/user/project
+        repo_path(str):	要分析的代码仓库根目录路径，例如/home/code/pdi-qa_product_tree_data_cleaning
         fuzzy_search(bool):	是否启用“模糊调用查找”，调用时不精确匹配，仅根据名称匹配。
             fuzzy_search=True：在分析调用关系时，即使函数名/类名重复，也会保留所有可能的候选目标（更全面但可能引入歧义）
         global_import(bool): 是否启用“跨文件全局搜索导入”，用于增强依赖分析。
@@ -338,15 +382,42 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
         >>> build_graph('xxx', global_import=True)
     """
     graph = nx.MultiDiGraph()
+    # key: 文件相对路径(相对当前仓库)，bam/merge_bam.py
+    # value: 文件绝对路径，/home/code/pdi-qa_product_tree_data_cleaning/bam/merge_bam.py
     file_nodes = {}
 
     ## add nodes
     graph.add_node('/', type=NODE_TYPE_DIRECTORY)
     dir_stack: List[str] = []
     dir_include_stack: List[bool] = []
+    # os.walk 默认采用深度优先遍历（DFS）的方式遍历目录结构，会先处理根目录，然后从第一个一级子目录开始递归进入最深的子目录，再逐级往回处理同级目录。
+    # 每次迭代返回一个三元组 (root, dirs, files)：
+    #   root：当前正在遍历的目录路径（字符串）。
+    #   dirs：当前目录下的子目录名列表（不包括 . 和 ..）。
+    #   files：当前目录下的文件名列表。
+    # 比如，针对如下目录结构：
+    # root/
+    #     dir1/
+    #         file1.txt
+    #         dir1_1/
+    #             file1_1.txt
+    #         dir1_2/
+    #             file1_2.txt
+    #     dir2/
+    #         file2.txt
+    #     file_root.txt
+    # 完整返回顺序：
+    # ("root", ["dir1", "dir2"], ["file_root.txt"])
+    # ("root/dir1", ["dir1_1", "dir1_2"], ["file1.txt"])
+    # ("root/dir1/dir1_1", [], ["file1_1.txt"]) 处理完dir1_1后逐级返回到dir1目录，然后继续深度遍历dir1_2目录
+    # ("root/dir1/dir1_2", [], ["file1_2.txt"]) 当dir1的所有子目录处理完后，返回到root目录，继续深度遍历dir2目录
+    # ("root/dir2", [], ["file2.txt"])
     for root, _, files in os.walk(repo_path):
-
         # add directory nodes and edges
+        # 从 repo_path 出发，找到 root 的相对路径
+        # 比如：repo_path=/home/code/pdi-qa_product_tree_data_cleaning
+        # 第一轮循环，root==repo_path，dir_name就是.
+        # 第二轮循环，root=/home/code/pdi-qa_product_tree_data_cleaning/bam，dir_name就是bam
         dirname = os.path.relpath(root, repo_path)
         if dirname == '.':
             dirname = '/'
@@ -357,6 +428,7 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
             parent_dirname = os.path.dirname(dirname)
             if parent_dirname == '':
                 parent_dirname = '/'
+            # 建立起如下目录之间的contains关系：/ -> bam
             graph.add_edge(parent_dirname, dirname, type=EDGE_TYPE_CONTAINS)
 
         # in reverse step, remove directories that do not contain .py file
@@ -367,7 +439,7 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
             dir_stack.pop()
             dir_include_stack.pop()
         if dirname != '/':
-            dir_stack.append(dirname)
+            dir_stack.append(dirname) # 由于是深度优先遍历，所以栈结构应该是['dir1','dir1/dir1_1','dir1/dir1_2','dir2']
             dir_include_stack.append(False)
 
         dir_has_py = False
@@ -377,7 +449,9 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
 
                 # add file nodes
                 try:
+                    # 文件绝对路径：/home/code/pdi-qa_product_tree_data_cleaning/merge_bam.py
                     file_path = os.path.join(root, file)
+                    # 文件相对路径：merge_bam.py
                     filename = os.path.relpath(file_path, repo_path)
                     if os.path.islink(file_path):
                         continue
@@ -395,20 +469,29 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
 
                 # add function/class nodes
                 for node in nodes:
+                    # class: merge_bam.py:AKSK
+                    # function: merge_bam.py:AKSK.new_token
                     full_name = f'{filename}:{node["name"]}'
                     graph.add_node(full_name, type=node['type'], code=node['code'],
                                    start_line=node['start_line'], end_line=node['end_line'])
 
                 # add edges with type=contains
+                # directory contains file: / -> merge_bam.py
                 graph.add_edge(dirname, filename, type=EDGE_TYPE_CONTAINS)
                 for node in nodes:
+                    # class: merge_bam.py:AKSK
+                    # function: merge_bam.py:AKSK.new_token
                     full_name = f'{filename}:{node["name"]}'
+                    # [AKSK] or [AKSK,new_token]
                     name_list = node['name'].split('.')
                     if len(name_list) == 1:
+                        # file contains class：merge_bam.py -> AKSK
                         graph.add_edge(filename, full_name, type=EDGE_TYPE_CONTAINS)
                     else:
+                        # class: AKSK
                         parent_name = '.'.join(name_list[:-1])
                         full_parent_name = f'{filename}:{parent_name}'
+                        # class contains function: merge_bam.py:AKSK -> merge_bam.py:AKSK.new_token
                         graph.add_edge(full_parent_name, full_name, type=EDGE_TYPE_CONTAINS)
 
         # keep all parent directories
@@ -423,7 +506,9 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
         dir_stack.pop()
         dir_include_stack.pop()
 
-    ## add imports edges (file -> class/function)
+    ## add imports edges (file -> file/class/function)
+    # filename: 文件相对路径(相对当前仓库)，bam/merge_bam.py
+    # filepath: 文件绝对路径，/home/code/pdi-qa_product_tree_data_cleaning/bam/merge_bam.py
     for filename, filepath in file_nodes.items():
         try:
             imports = find_imports(filepath, repo_path)
@@ -431,13 +516,23 @@ def build_graph(repo_path, fuzzy_search=True, global_import=False):
             continue
         add_imports(filename, imports, graph, repo_path)
 
+    # 最终构建的dict如下：
+    # {
+    #   '/': ['/'],
+    #   'py': ['merge_bam.py', 'log.py', ...],
+    #   'AKSK': ['merge_bam.py:AKSK'],
+    #   'new_token': ['merge_bam.py:AKSK.new_token'],
+    #   'Log': ['log.py:Log', 'test.py:Log'],
+    # }
     global_name_dict = defaultdict(list)
     if global_import:
         for node in graph.nodes():
+            # node举例：/, merge_bam.py:AKSK.new_token, retry.py:retry_func
             node_name = node.split(':')[-1].split('.')[-1]
             global_name_dict[node_name].append(node)
 
     ## add edges start from class/function
+    # class contains function, function invokes function
     for node, attributes in graph.nodes(data=True):
         if attributes.get('type') not in [NODE_TYPE_CLASS, NODE_TYPE_FUNCTION]:
             continue
