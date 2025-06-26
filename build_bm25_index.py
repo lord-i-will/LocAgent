@@ -1,20 +1,19 @@
 import argparse
-import glob
 import json
 import os
-import pickle
-import re
+import os.path as osp
+import subprocess
 import time
 from pathlib import Path
-import subprocess
+
 import torch.multiprocessing as mp
-import os.path as osp
 from datasets import load_dataset
-# from dependency_graph.build_graph import build_graph, VERSION
-from util.benchmark.setup_repo import setup_repo
+
 from plugins.location_tools.retriever.bm25_retriever import (
     build_code_retriever_from_repo as build_code_retriever
 )
+# from dependency_graph.build_graph import build_graph, VERSION
+from util.benchmark.setup_repo import setup_repo
 
 
 def list_folders(path):
@@ -22,7 +21,7 @@ def list_folders(path):
 
 
 def run(rank, repo_queue, repo_path, out_path,
-        download_repo=False, instance_data=None, similarity_top_k=10):
+        language='python', download_repo=False, instance_data=None, similarity_top_k=10):
     """
     调用build_code_retriever函数，构建bm25索引。
 
@@ -31,6 +30,7 @@ def run(rank, repo_queue, repo_path, out_path,
         repo_queue (multiprocessing.Queue): 存储要处理的仓库名称的队列，比如：['avantifellows__quiz-backend-84', 'Chainlit__chainlit-1575']。
         repo_path (str): 代码仓库的根目录，比如：playground/build_graph
         out_path (str): 输出文件的保存路径，比如：index_data/Loc-Bench_V1/BM25_index/
+        language (str): 代码库语言类型。
         download_repo (bool, optional): 是否下载代码仓库。
         instance_data (List[dict], optional): 实例数据字典，Loc-Bench_V1数据集。
         similarity_top_k (int, optional): BM25检索器的相似度阈值，默认为10。
@@ -70,7 +70,7 @@ def run(rank, repo_queue, repo_path, out_path,
 
         print(f'[{rank}] Start process {repo_name}')
         try:
-            retriever = build_code_retriever(repo_dir, persist_path=output_file,
+            retriever = build_code_retriever(repo_dir, language=language, persist_path=output_file,
                                              similarity_top_k=similarity_top_k)
             # G = build_graph(repo_dir, global_import=True)
             # with open(output_file, 'wb') as f:
@@ -89,6 +89,8 @@ if __name__ == '__main__':
                         help='Whether to download the codebase to `repo_path` before indexing.')
     parser.add_argument('--repo_path', type=str, default='playground/build_graph',
                         help='The directory where you plan to pull or have already pulled the codebase.')
+    parser.add_argument('--repo_lang', type=str, default='python',
+                        help='The language of the codebase. e.g. python/go')
     parser.add_argument('--index_dir', type=str, default='index_data',
                         help='The base directory where the generated graph index will be saved.')
     parser.add_argument('--instance_id_path', type=str, default='',
@@ -152,7 +154,7 @@ if __name__ == '__main__':
         run,
         nprocs=args.num_processes,
         args=(queue, args.repo_path, args.index_dir,
-              args.download_repo, selected_instance_data),
+              args.repo_lang, args.download_repo, selected_instance_data),
         join=True
     )
 

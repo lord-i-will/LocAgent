@@ -96,6 +96,9 @@ class QueryResult:
     
     
     def format_output(self, searcher):
+        """
+        根据设置的 format_mode，将代码搜索结果格式化为不同风格的输出字符串展示。
+        """
         cur_result = ''
         
         if self.format_mode == 'complete':

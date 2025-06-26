@@ -43,7 +43,7 @@ Example Usage:
 
 _STRUCTURE_EXPLORER_DESCRIPTION = """
 Unified repository exploring tool that traverses a pre-built code graph to retrieve dependency structure around specified entities.
-The search can be controlled to traverse upstream (exploring dependencies that entities rely on) or downstream (exploring how entities impact others), with optional limits on traversal depth and filters for entity and dependency types.
+The search can be controlled to traverse downstream (exploring dependencies that entities rely on) or upstream (exploring how entities impact others), with optional limits on traversal depth and filters for entity and dependency types.
 
 Code Graph Definition:
 * Entity Types: 'directory', 'file', 'class', 'function'.
@@ -126,8 +126,8 @@ _STRUCTURE_EXPLORER_PARAMETERS = {
         'direction': {
             'description': (
                 'Direction of traversal in the code graph; allowed options are: `upstream`, `downstream`, `both`.\n'
-                "- 'upstream': Traversal to explore dependencies that the specified entities rely on (how they depend on others).\n"
-                "- 'downstream': Traversal to explore the effects or interactions of the specified entities on others (how others depend on them).\n"
+                "- 'downstream': Traversal to explore dependencies that the specified entities rely on (how they depend on others).\n"
+                "- 'upstream': Traversal to explore the effects or interactions of the specified entities on others (how others depend on them).\n"
                 "- 'both': Traversal on both direction."
             ),
             'type': 'string',

@@ -95,8 +95,12 @@ class RepoEntitySearcher:
                 if nid.endswith('.py'):
                     fname = nid.split('/')[-1]  # foo.py
                     _global_name_dict[fname].append(nid)
-
                     name = nid[:-(len('.py'))].split('/')[-1]  # foo
+                    _global_name_dict[name].append(nid)
+                elif nid.endswith('.go'):
+                    fname = nid.split('/')[-1]  # foo.go
+                    _global_name_dict[fname].append(nid)
+                    name = nid[:-(len('.go'))].split('/')[-1]  # foo
                     _global_name_dict[name].append(nid)
                 # 如果是class或function节点，比如：src/foo.py:MyClass.my_method
                 elif ':' in nid:
@@ -116,10 +120,13 @@ class RepoEntitySearcher:
                 if nid.endswith('.py'):
                     fname = nid.split('/')[-1].lower()
                     _global_name_dict_lowercase[fname].append(nid)
-
                     name = nid[:-(len('.py'))].split('/')[-1].lower()
                     _global_name_dict_lowercase[name].append(nid)
-
+                elif nid.endswith('.go'):
+                    fname = nid.split('/')[-1].lower()
+                    _global_name_dict_lowercase[fname].append(nid)
+                    name = nid[:-(len('.go'))].split('/')[-1].lower()
+                    _global_name_dict_lowercase[name].append(nid)
                 elif ':' in nid:
                     name = nid.split(':')[-1].split('.')[-1].lower()
                     _global_name_dict_lowercase[name].append(nid)
@@ -137,6 +144,22 @@ class RepoEntitySearcher:
         return nid in self.G
 
     def get_node_data(self, nids, return_code_content=False, wrap_with_ln=True):
+        """
+        从图数据结构中获取指定节点的数据。
+        Args:
+            nids (list): 节点ID列表。比如：[src/foo.py:ClassA.method1, src/bar/foo.py]
+            return_code_content (bool, optional): 是否返回节点的代码内容。
+            wrap_with_ln (bool, optional): 是否对代码内容添加行号包装。
+        Returns:
+            list: 包含节点数据的列表，每个元素是一个dict。
+                比如：[{
+                    'node_id': 'src/foo.py:ClassA.method1',
+                    'type': 'function',
+                    'start_line': 10,
+                    'end_line': 11,
+                    'code_content': '10: def hello():\\n11:     print("world")'
+                }]
+        """
         rtn = []
         for nid in nids:
             node_data = self.G.nodes[nid]

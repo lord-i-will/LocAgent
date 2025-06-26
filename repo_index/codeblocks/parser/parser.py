@@ -82,6 +82,7 @@ class CodeParser:
         debug: bool = False,
     ):
         try:
+            # Parser 是 tree_sitter 的核心类，负责将源代码解析为语法树（Syntax Tree）
             self.tree_parser = Parser()
             self.tree_parser.set_language(language)
             self.tree_language = language
@@ -113,6 +114,13 @@ class CodeParser:
         pass
 
     def _extract_node_type(self, query: str):
+        """
+        Returns:
+            str: The node type extracted from the query. 比如：module、decorated_definition等
+        """
+        # \( 表示匹配一个左括号 (
+        # (\w+) 匹配一个或多个字母、数字或下划线（等价于 [a-zA-Z0-9_]）。
+        # 括号 () 表示这是一个捕获组，匹配的内容会被提取出来（可通过 group(1) 获取）
         pattern = r'\(\s*(\w+)'
         match = re.search(pattern, query)
         if match:

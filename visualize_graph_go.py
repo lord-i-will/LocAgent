@@ -6,7 +6,8 @@ from visualize_graph import visualize_with_filters
 
 
 def main():
-    with open(f'graph_html/go_graph_graph_building.json') as f:
+    filename = "go_graph_product_backend"
+    with open(f'graph_html/{filename}.json') as f:
         data = json.load(f)
     graph = nx.MultiDiGraph()
     # 添加节点
@@ -16,7 +17,7 @@ def main():
     for edge in data['edges']:
         graph.add_edge(edge['from'], edge['to'], type=edge['type'])
 
-    output_file = f"graph_html/go_graph_graph_building.html"
+    output_file = f"graph_html/{filename}.html"
     print("Visualizing...")
     visualize_with_filters(graph, output_file)
     print(f"✅ Visualization saved to {output_file}")

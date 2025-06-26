@@ -1,0 +1,17 @@
+[
+  {
+    "repo": "temai/product_backend",
+    "instance_id": "temai__product_backend-7222",
+    "base_commit": "36da79db6415f48c0d0b5de5006dc060775768f3",
+    "patch": "",
+    "problem_statement": "when pay, the maximum payment amount should <= 9000",
+    "edit_functions": [
+      "allv2/application/activity/list/stock_process_task.go:buildStockResp",
+      "allv2/starter/realization/converter/list_product_converter.go:buildStockResp"
+    ],
+    "added_functions": [
+      "allv2/application/activity/list/stock_process_task.go:buildStockTipsV2"
+    ],
+    "edit_functions_length": 2
+  }
+]

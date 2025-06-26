@@ -320,7 +320,7 @@ def search_entity_in_global_dict(term: str, include_files: Optional[List[str]] =
             prefix_terms = []
             # candidite_prefixes = ndata['node_id'].lower().replace('.py', '').replace('/', '.').split('.')
             # e.g. ndata['node_id'] -> app/schemas.py:PyObjectId.validate
-            # lower + strip .py → "app/schemas:pyobjectid.validate"
+            # lower + replace .py → "app/schemas:pyobjectid.validate"
             # re.split → ['app', 'schemas', 'pyobjectid', 'validate']
             candidite_prefixes = re.split(r'[./:]', ndata['node_id'].lower().replace('.py', ''))[:-1]
             if prefix_term:
@@ -642,6 +642,7 @@ def search_code_snippets(
             else:
                 filter_terms.append(term)
 
+        # ["foo", "bar"]
         joint_terms = deepcopy(filter_terms)
         if len(filter_terms) > 1:
             # 若有多个词，会在末尾添加一个合并搜索词（例如：["foo", "bar", "foo bar"]），便于执行模糊匹配或段落级搜索。
@@ -665,12 +666,16 @@ def search_code_snippets(
             if continue_search:
                 query_results = bm25_content_retrieve(query_info=query_info, include_files=include_files)
                 cur_query_results.extend(query_results)
-            # 如果不需要继续搜索，且还不是最后一个组合词，就尝试调整组合词，以避免重复或无效查询。
             elif i != (len(filter_terms) - 1):
-                joint_terms[i] = ''
-                filter_terms[-1] = ' '.join([t for t in joint_terms if t.strip()])
-                if filter_terms[-1] in filter_terms[:-1]:
-                    filter_terms[-1] = ''
+                # 核心逻辑：当子词搜索成功时，将其从合并词组成中移除
+                #   每次将 joint_terms 对应位置清空（禁用该子词在后续合并中的参与）
+                #   用剩余的非空词重新生成合并词
+                #   如果新合并词已存在于原列表（检查合并词是否冗余）则清空它
+                # 假设i=0
+                joint_terms[i] = ''  # joint_terms=["", "bar"]
+                filter_terms[-1] = ' '.join([t for t in joint_terms if t.strip()])  # filter_terms=["foo", "bar", "bar"]
+                if filter_terms[-1] in filter_terms[:-1]:  # "bar" in ["foo", "bar"]
+                    filter_terms[-1] = ''  # filter_terms = ["foo", "bar", ""]
 
             all_query_results.extend(cur_query_results)
 
@@ -812,6 +817,16 @@ def bm25_module_retrieve(
         similarity_top_k: int = 10,
         # sort_by_type = False
 ):
+    """
+    采用BM25算法查询代码图中所有匹配的节点。
+    Args:
+        query (str): 关键词，比如：foo
+        include_files (Optional[List[str]]): 指定检索的文件列表，比如：src/foo.py
+        search_scope (str): 搜索范围类型（'function'/'class'/'file'/'all'）。
+        similarity_top_k (int): 返回最相似结果的数量。
+    Returns:
+        List[str]: 检索到的节点ID列表，比如：['src/foo.py:ClassA.method1]','src/bar.py:foo']
+    """
     retriever = build_module_retriever(entity_searcher=get_graph_entity_searcher(),
                                        search_scope=search_scope,
                                        similarity_top_k=similarity_top_k)

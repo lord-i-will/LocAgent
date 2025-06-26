@@ -144,14 +144,13 @@ class EpicSplitter(NodeParser):
         **kwargs: Any,
     ) -> list[BaseNode]:
         """
-
+        被父类get_nodes_from_documents方法调用，将每个doc切分成更小粒度的CodeNode。
         Args:
-            nodes (Sequence[BaseNode]): CodeNode列表，CodeNode是从doc中切分出来的，doc(.py文件)和CodeNode是一对多。
-                如果doc内容很少，一个CodeNode就等价于一个doc；如果doc内容很多，就会被切分成多个CodeNode。
+            nodes (Sequence[BaseNode]): 其实就是Sequence[Document]，父类传入。
             show_progress (bool, optional): 是否显示进度条，默认为False。
 
         Returns:
-            list[BaseNode]:
+            list[BaseNode]: CodeNode列表，CodeNode是从doc中切分出来的，doc(.py文件)和CodeNode是一对多。如果doc内容很少，一个CodeNode就等价于一个doc；如果doc内容很多，就会被切分成多个CodeNode。
         """
         # 进度条展示
         nodes_with_progress = get_tqdm_iterable(nodes, show_progress, "Parsing nodes")
@@ -159,7 +158,7 @@ class EpicSplitter(NodeParser):
         all_nodes: list[BaseNode] = []
 
         for node in nodes_with_progress:
-            # e.g. Users/bytedance/bytedance/testing_efficiency/code/LocAgent//app/database.py
+            # e.g. app/database.py, allv2/application/acl/category.go
             file_path = node.metadata.get("file_path")
             content = node.get_content()
 
@@ -167,7 +166,12 @@ class EpicSplitter(NodeParser):
                 starttime = time.time_ns()
 
                 # TODO: Derive language from file extension
-                parser = create_parser(language=self.language, index_callback=self.index_callback)
+                language = self.language
+                if file_path.endswith(".py"):
+                    language = "python"
+                elif file_path.endswith(".go"):
+                    language = "go"
+                parser = create_parser(language=language, index_callback=self.index_callback)
                 codeblock = parser.parse(content, file_path=file_path)
 
                 parse_time = time.time_ns() - starttime

@@ -33,6 +33,7 @@ NTYPES = [
 
 
 def build_code_retriever_from_repo(repo_path,
+                                   language='python',
                                    similarity_top_k=10,
                                    min_chunk_size=100,
                                    chunk_size=500,
@@ -47,6 +48,7 @@ def build_code_retriever_from_repo(repo_path,
 
     Args:
         repo_path (str): 代码仓库的根目录，比如：playground/build_graph/5/avantifellows__quiz-backend
+        language (str): 代码库语言类型。
         similarity_top_k (int, optional): BM25检索器的相似度阈值，默认为10。
         min_chunk_size (int, optional): 最小的代码块大小，默认为100。
         chunk_size (int, optional): 代码块大小，默认为500。
@@ -64,12 +66,14 @@ def build_code_retriever_from_repo(repo_path,
     """
 
     # print(repo_path)
+    # 添加 Go 文件的 MIME 类型映射（永久生效）
+    mimetypes.add_type('text/x-go', '.go')
     # Only extract file name and type to not trigger unnecessary embedding jobs
     def file_metadata_func(file_path: str) -> Dict:
         """
         用于提取每个文件的元信息（路径、文件名、类型、类别等），供之后索引器使用。
         """
-        # print(file_path)
+        # print(file_path) -> allv2/application/acl/category.go
         file_path = file_path.replace(repo_path, '')
         if file_path.startswith('/'):
             file_path = file_path[1:]
@@ -79,6 +83,7 @@ def build_code_retriever_from_repo(repo_path,
             '**/tests/**',
             '**/test_*.py',
             '**/*_test.py',
+            '**/*_test.go',
         ]
         # 如果文件路径匹配上面任何一种测试模式，就将其分类为 'test'，否则为 'implementation'（即实际实现代码）。
         category = (
@@ -102,17 +107,18 @@ def build_code_retriever_from_repo(repo_path,
             '**/tests/**',
             '**/test_*.py',
             '**/*_test.py',
+            '**/*_test.go',
         ],  # 忽略所有测试代码
         file_metadata=file_metadata_func,  # 每个文件使用上面定义的函数添加元数据
         filename_as_id=True,  # 使用文件名作为节点 ID
-        required_exts=['.py'],  # TODO: Shouldn't be hardcoded and filtered
+        required_exts=['.py','.go'],  # TODO: Shouldn't be hardcoded and filtered
         recursive=True,
     )
     # [
     # Document(id_='/Users/bytedance/bytedance/testing_efficiency/code/LocAgent/playground/build_graph/5/avantifellows_quiz-backend/app/__init__.py',
     # embedding=None,
     # metadata={
-    #   'file_path': 'Users/bytedance/bytedance/testing_efficiency/code/LocAgent//app/__init__.py',
+    #   'file_path': 'app/__init__.py',
     #   'file_name': '__init__.py',
     #   'file_type': 'text/x-python',
     #   'category': 'implementation'
@@ -139,6 +145,7 @@ def build_code_retriever_from_repo(repo_path,
     # )
 
     splitter = EpicSplitter(
+        language=language,
         min_chunk_size=min_chunk_size,
         chunk_size=chunk_size,
         max_chunk_size=max_chunk_size,
@@ -149,7 +156,7 @@ def build_code_retriever_from_repo(repo_path,
     # [CodeNode(id_='/Users/bytedance/bytedance/testing_efficiency/code/LocAgent/playground/build_graph/5/avantifellows_quiz-backend/app/database.py__',
     # embedding=None,
     # metadata={
-    #   'file_path': 'Users/bytedance/bytedance/testing_efficiency/code/LocAgent//app/database.py',
+    #   'file_path': 'app/database.py',
     #   'file_name': 'database.py',
     #   'file_type': 'text/x-python',
     #   'category': 'implementation',
@@ -169,7 +176,7 @@ def build_code_retriever_from_repo(repo_path,
     # metadata_template='{key}: {value}',
     # metadata_seperator='\n'),
     # CodeNode(....)]
-    # 将每个doc切分成更小粒度的CodeNode。如果doc内容很少，一个CodeNode就等价于一个doc；如果doc内容很多，就会被切分成多个CodeNode。
+    # 将每个doc切分成更小粒度的CodeNode，供下游检索/索引使用。
     prepared_nodes = splitter.get_nodes_from_documents(docs, show_progress=show_progress)
 
     # We can pass in the index, docstore, or list of nodes to create the retriever
@@ -197,8 +204,17 @@ def build_module_retriever_from_graph(graph_path: Optional[str] = None,
                                       search_scope: str = 'all',
                                       # enum = {'function', 'class', 'file', 'all'}
                                       similarity_top_k: int = 10,
-
                                       ):
+    """
+    构建基于图结构的模块检索器。
+    Args:
+        graph_path (str, optional): 图结构数据的路径，比如：index_data/Loc-Bench_V1/graph_index_v2.3/avantifellows__quiz-backend-84.pkl
+        entity_searcher (RepoEntitySearcher, optional): 预构建的图搜索器实例。
+        search_scope (str, optional): 搜索范围类型（'function'/'class'/'file'/'all'）。
+        similarity_top_k (int, optional): 返回最相似结果的数量。
+    Returns:
+        BM25Retriever: 检索器中的Document对象仅使用图节点的nid（比如'src/foo.py:ClassA.method1'）作为文本内容。
+    """
     assert search_scope in NTYPES or search_scope == 'all'
     assert graph_path or isinstance(entity_searcher, RepoEntitySearcher)
 
@@ -221,6 +237,7 @@ def build_module_retriever_from_graph(graph_path: Optional[str] = None,
 
     # initialize node parser
     splitter = SimpleFileNodeParser()
+    # 将选中节点转换为Document对象（仅使用nid作为文本内容）
     documents = [Document(text=t['nid']) for t in selected_nodes]
     nodes = splitter.get_nodes_from_documents(documents)
 
