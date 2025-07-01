@@ -1,0 +1,155 @@
+{% set DEFAULT_EXAMPLE %}
+--- START OF EXAMPLE ---
+
+USER: 我们正在实现一个功能特性：“用户下单时，当库存量不足10个时，返回库存不足的错误并终止下单流程”。入口函数：api/handler.go:Handler.CreateOrder，你能帮忙分析下当前代码逻辑是否有问题吗？
+
+ASSISTANT:
+## Step 1: 分析用户要实现的功能特性，提取关键信息
+- 该特性属于支付流程相关。
+- 需要校验库存量<10时报错并终止流程。
+- 该功能点可能由多个函数共同实现，这些函数形成一个完整的调用链，但其入口函数是：api/handler.go:Handler.CreateOrder
+
+## Step 2: 提取入口函数作为关键词
+**Keywords**: 
+    - `api/handler.go:Handler.CreateOrder`
+
+**Action**: 查询代码库从而进一步获取该函数的实现逻辑
+<execute_ipython>
+search_terms = [
+    "api/handler.go:Handler.CreateOrder"
+]
+get_entity_contents(search_terms)
+</execute_ipython>"
+
+USER:
+OBSERVATION:
+Searching for 'api/handler.go:Handler.CreateOrder' ...
+##Searching for entity `sapi/handler.go:Handler.CreateOrder`...
+### Search Result:
+Found method `api/handler.go:Handler.CreateOrder`.
+```go
+func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+	var req CreateOrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	order, err := h.orderSvc.CreateOrder(r.Context(), req.UserID, req.Items)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	payment, err := h.paymentSvc.CreatePayment(r.Context(), order.ID, req.Method)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp := CreateOrderResponse{
+		Order:   order,
+		Payment: payment,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+```
+
+ASSISTANT:
+## Step 3: 分析代码主流程
+1. 调用 h.orderSvc.CreateOrder 创建订单
+2. 调用 h.paymentSvc.CreatePayment 创建支付记录
+
+这两个方法中看起来只有CreateOrder涉及到了库存的校验，我需要进一步分析这这个方法的实现逻辑，但目前我不清楚该方法的唯一ID是什么，所以我先查一下入口函数的下游调用有哪些吧。
+<execute_bash>
+explore_tree_structure(start_entities=["api/handler.go:Handler.CreateOrder"], direction="downstream", traversal_depth=1, dependency_type_filter=["invokes"])
+</execute_bash>
+
+USER:
+OBSERVATION:
+### The downstream methods being invoked include the following:  ###
+api/handler.go:Handler.CreateOrder
+├── invokes ── service/order_service.go:OrderService.CreateOrder
+├── invokes ── service/payment_service.go:PaymentService.CreatePayment
+
+ASSISTANT:
+现在我获得了CreateOrder的完整ID，我可以进一步分析CreateOrder的实现逻辑了。
+<execute_ipython>
+get_entity_contents(["service/order_service.go:OrderService.CreateOrder"])
+</execute_ipython>
+
+USER:
+OBSERVATION:
+##Searching for entity `service/order_service.go:OrderService.CreateOrder`...
+### Search Result:
+Found method `service/order_service.go:OrderService.CreateOrder`.
+```go
+func (s *OrderService) CreateOrder(ctx context.Context, userID string, items []domain.OrderItem) (*domain.Order, error) {
+	// 检查库存
+	for _, item := range items {
+		hasStock, err := s.productSvc.CheckStock(ctx, item.ProductID, item.Quantity)
+		if err != nil {
+			return nil, fmt.Errorf("check stock failed for product %s: %w", item.ProductID, err)
+		}
+		if !hasStock {
+			return nil, fmt.Errorf("insufficient stock for product %s", item.ProductID)
+		}
+	}
+	// 获取商品价格并填充订单项
+	// 创建订单
+	// 扣减库存
+	// 保存订单
+	return order, nil
+}
+```
+
+ASSISTANT:
+看起来 s.productSvc.CheckStock 方法的调用是用来检查库存信息的，同样地，我需要先查看 `service/order_service.go:OrderService.CreateOrder` 的下游调用有哪些，以便拿到 CheckStock 的完整ID。
+<execute_bash>
+explore_tree_structure(start_entities=["api/handler.go:Handler.CreateOrder"], direction="downstream", traversal_depth=1, dependency_type_filter=["invokes"])
+</execute_bash>
+
+USER:
+OBSERVATION:
+### The downstream methods being invoked include the following:  ###
+service/order_service.go:OrderService.CreateOrder
+├── invokes ── service/product_service.go:ProductService.CheckStock
+├── invokes ── repository/product_repo.go:ProductRepository.FindByID
+
+ASSISTANT:
+现在我获得了 CheckStock 的完整ID `service/product_service.go:ProductService.CheckStock`，让我进一步看看它的实现逻辑吧。
+<execute_ipython>
+get_entity_contents(["service/product_service.go:ProductService.CheckStock"])
+</execute_ipython>
+
+
+USER:
+OBSERVATION:
+##Searching for entity `service/product_service.go:ProductService.CheckStock`...
+### Search Result:
+Found method `service/product_service.go:ProductService.CheckStock`.
+```go
+func (s *ProductService) CheckStock(ctx context.Context, productID string, quantity int) (bool, error) {
+	return p.Stock < 5, nil
+}
+```
+
+ASSISTANT:
+在 CheckStock 方法中，库存校验逻辑是 `p.Stock < 5`，这显然是错误的，与功能特性中的描述 `库存<10` 不符。
+Conclusion:
+当前代码实现存在bug，在创建订单时，库存校验逻辑错误，需要修改 `service/product_service.go:ProductService.CheckStock` 方法中的库存校验逻辑。
+现在我已经完成了我的分析，需要分析结果发送给用户，同时调用 `finish` 来结束任务。
+<finish></finish>
+
+--- END OF EXAMPLE ---
+
+{% endset %}
+Here is an example of how you can interact with the environment for searching for related locations to solve the given task:
+{{ DEFAULT_EXAMPLE }}
+{% if micro_agent %}
+--- BEGIN OF GUIDELINE ---
+The following information may assist you in completing your task:
+
+{{ micro_agent }}
+--- END OF GUIDELINE ---
+{% endif %}
+
+NOW, LET'S START!

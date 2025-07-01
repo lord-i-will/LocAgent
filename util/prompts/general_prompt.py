@@ -7,6 +7,14 @@ Title: {title}
 
 """
 
+CASE_SET_TEMPLATE = """
+--- 需求描述开始 ---
+{feature_point}
+{entry_function}
+--- 需求描述结束 ---
+
+"""
+
 
 SYSTEM_PROMPT="""You're an experienced software tester and static analysis expert. 
 Given the problem offered by the user, please perform a thorough static analysis and to localize the bug in this repository using the available tools.

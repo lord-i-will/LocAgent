@@ -2,6 +2,7 @@ import os
 
 from jinja2 import Template
 
+
 # This is from openhands...
 # from openhands.utils.microagent import MicroAgent
 
@@ -21,16 +22,17 @@ class PromptManager:
     """
 
     def __init__(
-        self,
-        prompt_dir: str,
-        agent_skills_docs: str,
-        # micro_agent: MicroAgent | None = None,
+            self,
+            prompt_dir: str,
+            agent_skills_docs: str,
+            # micro_agent: MicroAgent | None = None,
     ):
         self.prompt_dir: str = prompt_dir
         self.agent_skills_docs: str = agent_skills_docs
 
         self.system_template: Template = self._load_template('system_prompt')
         self.user_template: Template = self._load_template('user_prompt')
+        self.user_template_bd: Template = self._load_template('user_prompt_bd')
         # self.micro_agent: MicroAgent | None = micro_agent
 
     def _load_template(self, template_name: str) -> Template:
@@ -59,6 +61,13 @@ class PromptManager:
         into a more specialized agent that is tailored to the user's task.
         """
         rendered = self.user_template.render(
+            micro_agent=None
+        )
+        return rendered.strip()
+
+    @property
+    def initial_user_message_bd(self) -> str:
+        rendered = self.user_template_bd.render(
             micro_agent=None
         )
         return rendered.strip()

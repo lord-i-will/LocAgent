@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "temai/product_backend",
+    "instance_id": "temai__product_backend-7111",
+    "base_commit": "d7d4cfedf3727685ff450d13b146551447ae967f",
+    "bug_fix_commit": "ac32e2119d24c27a63a0dceb9a4e4e47e1f5e704",
+    "patch": "",
+    "problem_statement": "功能特性：驳回原因展示，校验集：验证规格相关驳回时问题规格和驳回原因展示情况，步骤/结果：在规格弹窗页,模拟规格相关驳回情况，步骤/结果：查看问题规格和驳回原因展示情况，预期结果：问题规格标红,驳回原因在规格下方展示。\n入口函数：handler.go:ProductBackendServiceImpl.GetSchema",
+    "edit_functions": [
+      "allv2/application/view/common/audit_reason_detail.go:ConvSpecAuditReason"
+    ],
+    "added_functions": [
+    ],
+    "edit_functions_length": 1
+  }
+]

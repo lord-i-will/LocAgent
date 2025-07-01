@@ -16,9 +16,18 @@ def build_graph(repo_path, dump_file):
     graph = nx.MultiDiGraph()
     # 添加节点
     for node in data['nodes']:
+        if 'type' not in node:
+            print(f'node {node} has no type, skipping')
+            continue
         graph.add_node(node['id'], **node)
     # 添加边
     for edge in data['edges']:
+        if edge['from'] not in graph.nodes:
+            print(f'edge.from not in graph nodes, skipping, {edge}')
+            continue
+        elif edge['to'] not in graph.nodes:
+            print(f'edge.to not in graph nodes, skipping, {edge}')
+            continue
         graph.add_edge(edge['from'], edge['to'], type=edge['type'])
     # dump成.pkl文件
     with open(dump_file, 'wb') as f:

@@ -1,52 +1,49 @@
 import argparse
-import os
-import json
-import openai
 import logging
 import logging.handlers
 import time
-import toml
-from queue import Empty
-from typing import List
-from tqdm import tqdm
+from concurrent.futures import TimeoutError
 from copy import deepcopy
-from datasets import load_dataset, Split, Dataset
+from queue import Empty
+from time import sleep
+from typing import List
 
-from util.runtime.execute_ipython import execute_ipython
-from util.runtime import function_calling
-from util.actions.action_parser import ResponseParser
-from util.actions.action import ActionType
-from util.prompts.prompt import PromptManager
-from util.prompts import general_prompt
-from util.prompts.pipelines import (
-    simple_localize_pipeline as simple_loc,
-    auto_search_prompt as auto_search,
-)
-from util.cost_analysis import calc_cost
-from util.utils import *
-from util.process_output import (
-    parse_raw_loc_output,
-    get_loc_results_from_raw_outputs,
-    merge_sample_locations,
-)
+import litellm
+import openai
+import toml
+import torch.multiprocessing as mp
+from datasets import load_dataset, Split, Dataset
+from litellm import Message as LiteLLMMessage
+from openai import APITimeoutError
+
 from plugins import LocationToolsRequirement
 from plugins.location_tools.repo_ops.repo_ops import (
     set_current_issue,
     reset_current_issue,
 )
-import litellm
-from litellm import Message as LiteLLMMessage
-from openai import APITimeoutError
-from evaluation.eval_metric import filtered_instances
-
-from time import sleep
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-import torch.multiprocessing as mp
+from util.actions.action import ActionType
+from util.actions.action_parser import ResponseParser
+from util.cost_analysis import calc_cost
+from util.process_output import (
+    get_loc_results_from_raw_outputs,
+    merge_sample_locations,
+)
+from util.prompts import general_prompt
+from util.prompts.pipelines import (
+    simple_localize_pipeline as simple_loc,
+    auto_search_prompt as auto_search,
+    simple_localize_pipeline_bd as simple_loc_bd,
+    auto_search_prompt_bd as auto_search_bd,
+)
+from util.prompts.prompt import PromptManager
+from util.runtime import function_calling
+from util.runtime.execute_ipython import execute_ipython
 from util.runtime.fn_call_converter import (
     convert_fncall_messages_to_non_fncall_messages,
     convert_non_fncall_messages_to_fncall_messages,
     STOP_WORDS as NON_FNCALL_STOP_WORDS
 )
+from util.utils import *
 
 
 # litellm.set_verbose = True
@@ -136,12 +133,52 @@ def get_task_instruction(instance: dict, task: str = 'auto_search', include_pr=F
     return instruction
 
 
+def get_task_instruction_bd(instance: dict, task: str = 'auto_search', include_pr=False, include_hint=False):
+    output_format = None
+    instruction = ""
+
+    if task.strip() == 'auto_search':
+        task_description = auto_search_bd.TASK_INSTRUCTION.format(
+            package_name=instance['instance_id'].split('_')[0]
+        )
+    elif task.strip() == 'simple_analysis':
+        task_description = simple_loc_bd.ISSUE_DETECT_TASK_INSTRUCTION
+        output_format = simple_loc_bd.OUTPUT_FORMAT_LOC
+    else:
+        return None
+
+    instruction += task_description
+
+    if include_pr:
+        problem_statement = instance['problem_statement']
+        parts = problem_statement.strip().split('\n')
+        instruction += general_prompt.CASE_SET_TEMPLATE.format(
+            feature_point=parts[0],
+            entry_function='\n'.join(parts[1:]).strip()
+        )
+
+    if output_format:
+        instruction += output_format
+
+    if include_hint:
+        instruction += (
+            'IMPORTANT: You should ONLY interact with the environment provided to you AND NEVER ASK FOR HUMAN HELP.\n'
+            'Don\'t include any lambda functions!\n'
+            'The `finish` tool must be invoked to terminate the session when analysis is completed!\n'
+            'You should NOT modify any files!\n'
+        )
+
+    # NOTE: You can actually set slightly different instruction for different task
+    # instruction += AGENT_CLS_TO_INST_SUFFIX
+    return instruction
+
+
 def auto_search_process(result_queue,
                         model_name, messages, fake_user_msg,
                         tools=None,
                         traj_data=None,
                         temp=1.0,
-                        max_iteration_num=20,
+                        max_iteration_num=40,
                         use_function_calling=True):
     """
     迭代式 agent driver，开展和LLM之间的“交互式多轮定位”过程，这个过程是自动化的，会不断向 LLM 提交 prompt，调用工具函数（若需要），并最终输出：
@@ -439,13 +476,13 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                     if args.use_example:
                         messages.append({
                             "role": "user",
-                            "content": prompt_manager.initial_user_message
+                            "content": prompt_manager.initial_user_message_bd
                         })
 
                     logger.info(f"==== {instance_id} start auto search ====")
                     messages.append({
                         "role": "user",
-                        "content": get_task_instruction(bug, include_pr=True, include_hint=True),
+                        "content": get_task_instruction_bd(bug, include_pr=True, include_hint=True),
                     })
 
                     ctx = mp.get_context('fork')  # use fork to inherit context!!
@@ -453,7 +490,7 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                     tools = None
                     if args.use_function_calling:
                         tools = function_calling.get_tools(
-                            codeact_enable_search_keyword=True,
+                            codeact_enable_search_keyword=False,
                             codeact_enable_search_entity=True,
                             codeact_enable_tree_structure_traverser=True,
                             simple_desc=args.simple_desc,
@@ -462,7 +499,7 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                         'result_queue': result_queue,
                         'model_name': args.model,
                         'messages': messages,
-                        'fake_user_msg': auto_search.FAKE_USER_MSG_FOR_LOC,
+                        'fake_user_msg': simple_loc_bd.FAKE_USER_MSG_FOR_ISSUE_DETECT,
                         'temp': 1,
                         'tools': tools,
                         'use_function_calling': args.use_function_calling,
@@ -754,8 +791,25 @@ def main():
         merge(args)
 
 
+def format_duration(seconds):
+    """将秒数格式化为 XhXminXs 的字符串"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}min")
+    if seconds > 0 or not parts:  # 确保至少显示一个单位（如0s）
+        parts.append(f"{seconds}s")
+
+    return "".join(parts)
+
+
 if __name__ == "__main__":
     start_time = time.time()
     main()
     end_time = time.time()
-    logging.info("Total time: {:.4f} min".format((end_time - start_time) / 60))
+    logging.info(f"Total time: {format_duration(end_time - start_time)}")

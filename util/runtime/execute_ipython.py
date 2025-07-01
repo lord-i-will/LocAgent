@@ -1,13 +1,12 @@
-from IPython import get_ipython
+from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from IPython.utils.capture import capture_output
+
 from plugins.location_tools.repo_ops.repo_ops import (
     search_code_snippets,
     get_entity_contents,
     explore_graph_structure,
     explore_tree_structure,
 )
-
-from IPython.utils.capture import capture_output
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
 
 
 def execute_ipython(code_to_execute):

@@ -4,7 +4,7 @@
     "instance_id": "temai__product_backend-7222",
     "base_commit": "36da79db6415f48c0d0b5de5006dc060775768f3",
     "patch": "",
-    "problem_statement": "when pay, the maximum payment amount should <= 9000",
+    "problem_statement": "功能特性：部分规格已售罄时需要在前端总库存下增加售罄比例展示 X/Y 个规格售罄。\n入口函数：allv2/application/activity/list/stock_process_task.go:StockProcessTask.Process",
     "edit_functions": [
       "allv2/application/activity/list/stock_process_task.go:buildStockResp",
       "allv2/starter/realization/converter/list_product_converter.go:buildStockResp"
