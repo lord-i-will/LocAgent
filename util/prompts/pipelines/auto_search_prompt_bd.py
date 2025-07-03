@@ -49,9 +49,7 @@ line: 24
 function: generatePaymentID
 ```
 
-仅返回位置信息。
-
-注：你的思考应全面，因此内容较长也没关系。
+注：你的思考应全面，因此内容较长也没关系，另外请用中文输出。
 """
 
 FAKE_USER_MSG_FOR_LOC = (

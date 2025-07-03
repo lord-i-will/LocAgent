@@ -1,0 +1,17 @@
+[
+  {
+    "repo": "temai/product_backend",
+    "instance_id": "temai__product_backend-7081",
+    "base_commit": "6677917fd7980d179c6c47182863b4abbb15f104",
+    "bug_fix_commit": "6054c882a04758d09c485189df140f85fcf9e5e3",
+    "patch": "",
+    "problem_statement": "功能特性：验证打标组件默认勾选状态，校验集：在商品管理后台/新发品上架页且已展示打标组件，步骤/结果：查看打标组件的勾选状态，步骤/结果：打标组件默认处于勾选状态。\n入口函数：allv2/application/view/component_manager/component_manager.go:ComponentManager.RenderElements",
+    "edit_functions": [
+      "allv2/application/view/component/industry/secondhand_luxury_quality_control/secondhand_quality_control_comp.go:secondhandLuxuryQualityControlComp.RenderPreProcess"
+
+    ],
+    "added_functions": [
+    ],
+    "edit_functions_length": 1
+  }
+]

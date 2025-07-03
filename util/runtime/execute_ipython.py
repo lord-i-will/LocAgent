@@ -25,9 +25,27 @@ def execute_ipython(code_to_execute):
     # Manually initialize an IPython shell
     ipython_shell = TerminalInteractiveShell.instance()
 
+    # 存储get_entity_contents的调用记录
+    get_entity_contents_calls = []
+
+    def log_get_entity_contents(func):
+        def wrapper(entity_names, *args, **kwargs):
+            # 记录调用信息
+            call_info = {
+                "function": "get_entity_contents",
+                "entity_names": entity_names,
+                "additional_args": args,  # 其他位置参数（如果有）
+                "additional_kwargs": kwargs  # 其他关键字参数（如果有）
+            }
+            get_entity_contents_calls.append(call_info)
+            # 执行原函数
+            return func(entity_names, *args, **kwargs)
+
+        return wrapper
+
     # Inject the function into the IPython environment
     ipython_shell.user_ns['search_code_snippets'] = search_code_snippets
-    ipython_shell.user_ns['get_entity_contents'] = get_entity_contents
+    ipython_shell.user_ns['get_entity_contents'] = log_get_entity_contents(get_entity_contents)
     ipython_shell.user_ns['explore_graph_structure'] = explore_graph_structure
     ipython_shell.user_ns['explore_tree_structure'] = explore_tree_structure
     # ipython_shell.user_ns['explore_repo_structure'] = explore_repo_structure
@@ -39,8 +57,19 @@ def execute_ipython(code_to_execute):
 
     output = ''
     if captured.stdout:
-        output += captured.stdout
+        output += handle_output(captured.stdout, get_entity_contents_calls)
     if captured.stderr:
         output += captured.stderr
 
     return output if output else None
+
+
+def handle_output(stdout, calls: list):
+    if len(calls) == 0:
+        return stdout
+
+    downstream_invokes = explore_tree_structure(start_entities=calls[0].get('entity_names'), direction='downstream',
+                                                traversal_depth=1,
+                                                dependency_type_filter=['invokes'])
+
+    return f'{stdout}\n下游依赖（深度1）:\n{downstream_invokes}\n'

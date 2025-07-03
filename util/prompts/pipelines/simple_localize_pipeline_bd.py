@@ -28,6 +28,6 @@ function: generatePaymentID
 """
 
 FAKE_USER_MSG_FOR_ISSUE_DETECT = (
-    'If you think you have solved the task, please send your final answer (including the former answer and reranking) to user through message and then call `finish` to finish.\n'
-    'IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n'
+    '若确认任务已完成，请将最终答案发送给用户，同时请务必调用 `finish` 工具结束整个流程。\n'
+    '重要：禁止寻求人工帮助，禁止回复空的内容。\n'
 )

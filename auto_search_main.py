@@ -359,10 +359,17 @@ def auto_search_process(result_queue,
                 finish = True  # break
             elif action.action_type == ActionType.MESSAGE:
                 # 模型自己思考 + 推理，要求继续
-                logging.debug("thought:\n" + action.content)
+                content = action.content
+                logging.debug("thought:\n" + content)
                 # check if enough
                 messages.append({"role": "user", "content": fake_user_msg})
                 traj_msgs.append({"role": "user", "content": fake_user_msg})
+                if '```' in content and ('method' in content or 'lines' in content):
+                    logging.warning("The task seems to be finished, but the llm did not call `finish` tool. Force termination.")
+                    final_output = content
+                    logging.info('=' * 15)
+                    logging.info("\nFinal Response:=\n" + final_output)
+                    finish = True
                 # continue
             elif action.action_type == ActionType.RUN_IPYTHON:
                 # 尝试执行代码段（如文件搜索、依赖图构建）
@@ -373,31 +380,35 @@ def auto_search_process(result_queue,
                     function_response = eval(function_response)
                 except SyntaxError:
                     function_response = function_response
+                except Exception as e:
+                    logging.error(f"Error while executing code:\n{e}")
+                    function_response = function_response
                 if not isinstance(function_response, str):
                     function_response = str(function_response)
 
-                logging.info("OBSERVATION:\n" + function_response)
+                content = "OBSERVATION:\n" + function_response
+                logging.info(content)
                 if not tools:
                     messages.append({
                         "role": "user",
-                        "content": "OBSERVATION:\n" + function_response,
+                        "content": content,
                     })
                     traj_msgs.append({
                         "role": "user",
-                        "content": "OBSERVATION:\n" + function_response,
+                        "content": content,
                     })
                 else:
                     messages.append({
                         "role": "tool",
                         "tool_call_id": action.tool_call_id,
                         "name": action.function_name,
-                        "content": "OBSERVATION:\n" + function_response,
+                        "content": content,
                     })
                     traj_msgs.append({
                         "role": "tool",
                         "tool_call_id": action.tool_call_id,
                         "name": action.function_name,
-                        "content": "OBSERVATION:\n" + function_response,
+                        "content": content,
                     })
             else:
                 logging.warning('Error Action!')
@@ -490,7 +501,7 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                     tools = None
                     if args.use_function_calling:
                         tools = function_calling.get_tools(
-                            codeact_enable_search_keyword=False,
+                            codeact_enable_search_keyword=True,
                             codeact_enable_search_entity=True,
                             codeact_enable_tree_structure_traverser=True,
                             simple_desc=args.simple_desc,
